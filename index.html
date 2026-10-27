@@ -11,7 +11,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23E4572E'/%3E%3Cpath d='M32 12c-8.3 0-15 6.5-15 14.6 0 10.6 15 25.4 15 25.4s15-14.8 15-25.4C47 18.5 40.3 12 32 12z' fill='%23fff'/%3E%3Ccircle cx='32' cy='27' r='5.5' fill='%23E4572E'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@87.5,400;87.5,500;87.5,600;87.5,700;87.5,800&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" integrity="sha512-qZvrmS2ekKPF2mSznTQsxqPgnpkI4DNTlrdUmTzrDgektczlKNRRhy5X5AAOnx5S09ydFYWWNSfcEqDTTHgtNA==" crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
 <style>
 :root{
   --ink:#16191D; --paper:#F4F2EC; --card:#FFFFFF; --line:#E2DED6; --muted:#6B7078; --soft:#F0EDE6;
@@ -294,7 +294,8 @@ try { S.k = localStorage.getItem("pl_k"); } catch {}
 // ---------- helpers ----------
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const fmtD = (d) => d ? new Date(d).toLocaleDateString("en-US", { month: "numeric", day: "numeric", year: "2-digit" }) : "";
+const parseD = (d) => { if (!d) return null; const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d); return m ? new Date(+m[1], +m[2] - 1, +m[3]) : new Date(d); };
+const fmtD = (d) => d ? parseD(d).toLocaleDateString("en-US", { month: "numeric", day: "numeric", year: "2-digit" }) : "";
 const fmtDT = (d) => d ? new Date(d).toLocaleString("en-US", { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
 const stChip = (s) => `<span class="st ${STATUS_CLASS[s] || ""}" title="${esc(PLAIN[s] || "")}">${esc(s)}</span>`;
 const tyChip = (t) => `<span class="chip type ${t === "C/O" ? "co" : t === "Orig Scope - Gated" ? "gated" : ""}">${esc(t)}</span>`;
@@ -310,7 +311,7 @@ async function api(op, args = {}) {
 }
 function partyName(board, id) { const p = (board?.parties || []).find((x) => x.id === id); return p ? (p.company && p.role === "sub" ? p.company : p.name) : ""; }
 function partyFull(board, id) { const p = (board?.parties || []).find((x) => x.id === id); return p ? [p.name, p.company].filter(Boolean).join(", ") : ""; }
-function isOverdue(it) { return it.due_date && it.status !== "Closed" && new Date(it.due_date) < new Date(new Date().toDateString()); }
+function isOverdue(it) { return it.due_date && !["Closed", "Removed", "Draft"].includes(it.status) && parseD(it.due_date) < new Date(new Date().toDateString()); }
 function linkFor(token) { return `${location.origin}${location.pathname}?k=${encodeURIComponent(token)}`; }
 async function copy(text) { try { await navigator.clipboard.writeText(text); toast("Link copied"); } catch { prompt("Copy this link:", text); } }
 
@@ -391,10 +392,10 @@ async function renderHome() {
   await Promise.all(S.projects.map((p) => loadBoard(p.slug)));
   const cards = S.projects.map((p) => {
     const b = S.boards[p.slug]; const c = countsFor(b.items);
-    const hot = me.role === "owner" ? b.items.filter((i) => ["Ready for Review", "Ready to Close"].includes(i.status)).length : b.items.filter((i) => i.status === "Ready for Review").length;
+    const hot = me.role === "owner" ? b.items.filter((i) => i.status === "Ready to Close").length : b.items.filter((i) => i.status === "Ready for Review").length;
     return `<a class="card store" href="#/p/${p.slug}">
       <h3>${esc(p.name)}</h3><div class="meta">${esc(p.job_no || "")} &middot; ${esc(p.address || "")}</div>
-      <div class="nums"><div><b>${c.open}</b>open</div><div class="hot"><b>${hot}</b>${me.role === "owner" ? "to review" : "sub says done"}</div><div class="done"><b>${c.closed}</b>closed</div></div></a>`;
+      <div class="nums"><div><b>${c.open}</b>open</div><div class="hot"><b>${hot}</b>${me.role === "owner" ? "to accept" : "sub says done"}</div><div class="done"><b>${c.closed}</b>closed</div></div></a>`;
   }).join("");
   const allOpen = S.projects.reduce((n, p) => n + countsFor(S.boards[p.slug].items).open, 0);
   shell(`
@@ -417,7 +418,7 @@ async function renderBoard(slug) {
   const photoCount = (id) => b.photos.filter((p) => p.item_id === id && !p.removed_at).length;
   const F = {
     all: { label: "All", f: () => true },
-    needs: { label: me.role === "owner" ? "To review" : "Sub says done", f: (i) => me.role === "owner" ? ["Ready for Review", "Ready to Close"].includes(i.status) : i.status === "Ready for Review" },
+    needs: { label: me.role === "owner" ? "To accept" : "Sub says done", f: (i) => me.role === "owner" ? i.status === "Ready to Close" : i.status === "Ready for Review" },
     open: { label: "Open", f: (i) => !["Closed", "Draft"].includes(i.status) },
     withsub: { label: "With sub", f: (i) => ["Work Required", "Not Accepted", "Open"].includes(i.status) },
     verified: { label: "Verified", f: (i) => i.status === "Ready to Close" },
@@ -502,10 +503,11 @@ async function renderItem(slug, id) {
     if (["Ready to Close", "Closed"].includes(st)) A.push(`<div class="empty" style="padding:12px">${st === "Closed" ? "Accepted by the owner. Nothing more to do." : "Verified by Alleato, waiting on the owner."}</div>`);
   }
   if (me.role === "owner") {
-    if (["Ready for Review", "Ready to Close"].includes(st)) {
+    if (st === "Ready to Close") {
       A.push(`<button class="btn ok" onclick="move('${slug}','${id}','Closed','Any note for the record? (optional)')">&#10003; Accept and close</button>`);
       A.push(`<button class="btn warn" onclick="move('${slug}','${id}','Not Accepted','What still needs doing?',true)">Send it back</button>`);
-    } else if (st === "Closed") A.push(`<div class="empty" style="padding:12px">Closed ${fmtD(it.closed_at)}.</div>`);
+    } else if (st === "Ready for Review") A.push(`<div class="empty" style="padding:12px">The sub says it is done. Alleato verifies next; you will see Accept here after that.</div>`);
+    else if (st === "Closed") A.push(`<div class="empty" style="padding:12px">Closed ${fmtD(it.closed_at)}.</div>`);
     else A.push(`<div class="empty" style="padding:12px">${PLAIN[st]}. You will see Accept here once the work is done and photographed.</div>`);
   }
   if (me.role === "admin") {
@@ -603,8 +605,9 @@ function subComplete(slug, id) {
 async function move(slug, id, to, prompt, required) {
   let note = "";
   if (prompt) { note = await ask(prompt, "", required, to); if (note === null) return; }
-  try { await api("transition", { id, to, note }); toast(`Now: ${to}`); await loadBoard(slug, true); render(); }
-  catch (e) { toast(e.message, true); }
+  const cur = (S.boards[slug]?.items || []).find((i) => i.id === id);
+  try { await api("transition", { id, to, note, from_status: cur?.status }); toast(`Now: ${to}`); await loadBoard(slug, true); render(); }
+  catch (e) { toast(e.message, true); if (/changed since|just changed/.test(e.message)) { await loadBoard(slug, true); render(); } }
 }
 async function notified(slug, id) {
   const bg = sheet(`<h2>Put a text, email or call on the record</h2><div class="field"><label>How</label><select class="in" id="nt_how"><option>text</option><option>email</option><option>call</option><option>in person</option></select></div>
@@ -776,7 +779,7 @@ async function renderWork() {
   for (const it of r.items) (byProj[it.projects.slug] ||= { p: it.projects, items: [] }).items.push(it);
   const todo = r.items.filter((i) => ["Open", "Work Required", "Not Accepted", "In Dispute"].includes(i.status)).length;
   const today = new Date(new Date().toDateString()); const week = new Date(today.getTime() + 7 * 864e5);
-  const bucket = (i) => !i.due_date ? "later" : new Date(i.due_date + "T00:00") <= today ? "today" : new Date(i.due_date + "T00:00") < week ? "week" : "later";
+  const bucket = (i) => !i.due_date ? "later" : parseD(i.due_date) <= today ? "today" : parseD(i.due_date) < week ? "week" : "later";
   const due = { today: r.items.filter((i) => bucket(i) === "today" && i.status !== "Closed"), week: r.items.filter((i) => bucket(i) === "week" && i.status !== "Closed") };
   const sched = S.me.role === "helper" || due.today.length || due.week.length ? `<div class="card" style="padding:12px 14px;margin-bottom:6px"><b style="font-size:15px">Your schedule</b>
       <div class="sub" style="margin-top:4px">${due.today.length ? `<b style="color:var(--flag)">Today / overdue:</b> ${[...new Set(due.today.map((i) => i.projects.name))].map((n) => `${esc(n)} (${due.today.filter((i) => i.projects.name === n).map((i) => "#" + i.number).join(", ")})`).join("; ")}` : "Nothing dated for today."}
@@ -798,7 +801,8 @@ async function renderPeople() {
   const b = await loadBoard(S.projects[0].slug, true);
   document.title = "People · Punchline";
   const order = { admin: 0, helper: 1, owner: 2, sub: 3 };
-  const people = b.parties.slice().sort((a, c) => order[a.role] - order[c.role] || (a.company || a.name).localeCompare(c.company || c.name));
+  const people = b.parties.filter((p) => p.active !== false).slice().sort((a, c) => order[a.role] - order[c.role] || (a.company || a.name).localeCompare(c.company || c.name));
+  const inactive = (b.inactive || []);
   const cnt = (pid) => S.projects.reduce((n, p) => n + (S.boards[p.slug]?.items || []).filter((i) => i.assignee_id === pid && i.status !== "Closed").length, 0);
   shell(`
     <div class="h"><div><h1>People &amp; links</h1><div class="sub">Each person opens Punchline with their own link. Send it by text or email once; it keeps working.</div></div>
@@ -810,7 +814,9 @@ async function renderPeople() {
           ${p.email ? `<a class="btn sm" href="mailto:${esc(p.email)}?subject=${encodeURIComponent("Your Punchline link")}&body=${encodeURIComponent(`${p.name.split(" ")[0]},\n\nYour punch items for the Goodwill stores are here: ${linkFor(p.token)}\n\nOpen it on your phone. Finish an item, add a photo of the finished work, and tap Mark complete. The owner accepts it from the photo.\n\nRegards,\n${S.me.name}`)}">Email it</a>` : ""}
           ${p.phone ? `<a class="btn sm" href="sms:${esc(p.phone.replace(/[^\d+]/g, ""))}?&body=${encodeURIComponent(`Your Goodwill punch items: ${linkFor(p.token)}`)}">Text it</a>` : ""}
           <button class="btn sm ghost" onclick="editPerson('${p.id}')">Edit</button>
-          <button class="btn sm ghost" onclick="resetLink('${p.id}')" title="Old link stops working">New link</button></div></div>`).join("")}</div>`, { back: "Stores" });
+          <button class="btn sm ghost" onclick="resetLink('${p.id}')" title="Old link stops working">New link</button>
+          ${p.id !== S.me.id ? `<button class="btn sm ghost" style="color:var(--s-notacc)" onclick="switchOff('${p.id}','${esc(p.name)}')">Switch off</button>` : ""}</div></div>`).join("")}</div>
+    ${inactive.length ? `<div class="group">Switched off</div><div class="card">${inactive.map((p) => `<div class="person"><div class="top"><div><div class="nm" style="opacity:.6">${esc(p.name)}</div><div class="co">${esc(p.company || "")}</div></div><button class="btn sm" onclick="switchOn('${p.id}')">Switch on</button></div></div>`).join("")}</div>` : ""}`, { back: "Stores" });
 }
 async function editPerson(id) {
   const b = S.boards[S.projects[0].slug]; const p = id ? b.parties.find((x) => x.id === id) : { role: "sub", project_ids: [] };
@@ -827,6 +833,15 @@ async function editPerson(id) {
     if (!row.name) return toast("Name needed", true);
     try { await api("party_save", row); bg.remove(); S.boards = {}; renderPeople(); toast("Saved"); } catch (e) { toast(e.message, true); }
   };
+}
+async function switchOff(id, name) {
+  if (!confirm(`Switch off ${name}? Their link stops working at once. Their items and history stay.`)) return;
+  const p = S.boards[S.projects[0].slug].parties.find((x) => x.id === id);
+  try { await api("party_save", { ...p, active: false }); S.boards = {}; renderPeople(); toast("Switched off"); } catch (e) { toast(e.message, true); }
+}
+async function switchOn(id) {
+  const p = (S.boards[S.projects[0].slug].inactive || []).find((x) => x.id === id);
+  try { await api("party_save", { ...p, active: true }); S.boards = {}; renderPeople(); toast("Switched on"); } catch (e) { toast(e.message, true); }
 }
 async function resetLink(id) { if (!confirm("Make a new link? The old one stops working.")) return; try { await api("party_reset", { id }); S.boards = {}; renderPeople(); toast("New link made"); } catch (e) { toast(e.message, true); } }
 
@@ -891,7 +906,7 @@ async function renderPrint(slug) {
     <div class="screen-doc"><div class="doc">
       <div class="tl"><div><h1>FINAL PUNCH LIST &amp; SIGN-OFF</h1><div>${esc(p.name)} &nbsp;|&nbsp; Job ${esc(p.job_no || "")}</div></div><div style="text-align:right;font-size:11px">Punchline<br>${new Date().toLocaleDateString()}</div></div>
       <h2>Project information</h2>
-      <div class="info"><div><small>Project name</small>Goodwill Store Remodel - ${esc(p.name)}</div><div><small>Job no.</small>${esc(p.job_no || "")}</div>
+      <div class="info"><div><small>Project name</small>${esc(p.owner_name || "")} Store Remodel - ${esc(p.name)}</div><div><small>Job no.</small>${esc(p.job_no || "")}</div>
         <div><small>Site address</small>${esc(p.address || "")}</div><div><small>Owner</small>${esc(p.owner_name || "")}</div>
         <div><small>Owner's representative</small>${esc(p.owner_rep || "")}</div><div><small>Alleato project manager</small>${esc(p.alleato_pm || "")}</div>
         <div><small>Alleato field lead</small>${esc(p.field_lead || "")}</div><div><small>Items</small>${items.length} total, ${items.filter((i) => i.status === "Closed").length} closed</div></div>
