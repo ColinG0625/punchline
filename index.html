@@ -414,7 +414,7 @@ async function renderBoard(slug) {
   document.title = `${b.project.name} · Punchline`;
   const me = S.me;
   const items = b.items;
-  const photoCount = (id) => b.photos.filter((p) => p.item_id === id).length;
+  const photoCount = (id) => b.photos.filter((p) => p.item_id === id && !p.removed_at).length;
   const F = {
     all: { label: "All", f: () => true },
     needs: { label: me.role === "owner" ? "To review" : "Sub says done", f: (i) => me.role === "owner" ? ["Ready for Review", "Ready to Close"].includes(i.status) : i.status === "Ready for Review" },
@@ -458,7 +458,7 @@ function lockBanner(b) {
   const p = b.project, me = S.me;
   const live = b.items.filter((i) => !["Draft", "Removed"].includes(i.status));
   if (live.length && live.every((i) => i.status === "Closed")) return `<div class="card" style="padding:12px 14px;margin-bottom:12px;border-color:var(--s-closed)"><b>&#10003; Store complete.</b> Every item is closed or formally removed. ${me.role === "owner" ? "Sign final acceptance on the Sign-off tab." : "Final acceptance can be signed on the Sign-off tab."}</div>`;
-  if (p.locked_at) return `<div class="card" style="padding:12px 14px;margin-bottom:12px;border-color:var(--s-closed)"><b>&#128274; List frozen</b> &middot; agreed by ${esc(p.locked_by)} on ${fmtD(p.locked_at)}. No items can be added.${me.role === "admin" ? ` <button class="btn sm ghost" style="margin-left:8px" onclick="unlockList('${p.slug}')">Unlock (recorded)</button>` : ""}</div>`;
+  if (p.locked_at) return `<div class="card" style="padding:12px 14px;margin-bottom:12px;border-color:var(--s-closed)"><b>&#128274; List frozen</b> &middot; ${p.locked_role === "owner" ? `agreed by the owner, ${esc(p.locked_by)}` : `frozen by Alleato (${esc(p.locked_by)}), not yet agreed by the owner`} on ${fmtD(p.locked_at)}. No items can be added and existing items cannot be reworded.${me.role === "admin" ? ` <button class="btn sm ghost" style="margin-left:8px" onclick="unlockList('${p.slug}')">Unlock (recorded)</button>` : ""}</div>`;
   if (me.role === "owner") return `<div class="card" style="padding:12px 14px;margin-bottom:12px;border-color:var(--flag)"><b>This list is not frozen yet.</b> <span class="sub">Review every item, then agree to it. After that nothing gets added without a recorded unlock.</span><div style="margin-top:8px"><button class="btn sm primary" onclick="lockList('${p.slug}')">I agree to this list, freeze it</button></div></div>`;
   if (me.role === "admin") return `<div class="sub" style="margin:-4px 0 12px">List open for adds. ${b.log.length ? `Last: ${esc(b.log[b.log.length - 1].action)} by ${esc(b.log[b.log.length - 1].parties?.name || "")} ${fmtD(b.log[b.log.length - 1].created_at)}.` : ""} <button class="btn sm ghost" onclick="lockList('${p.slug}')">Freeze now</button></div>`;
   return "";
@@ -484,7 +484,8 @@ async function renderItem(slug, id) {
   if (!it) return shell(`<div class="empty">That item is not on your list.</div>`, { back: "List" });
   document.title = `#${it.number} ${it.title} · Punchline`;
   const me = S.me;
-  const photos = b.photos.filter((p) => p.item_id === id);
+  const photos = b.photos.filter((p) => p.item_id === id && !p.removed_at);
+  const removedPhotos = b.photos.filter((p) => p.item_id === id && p.removed_at);
   const before = photos.filter((p) => p.kind === "before"), after = photos.filter((p) => p.kind === "after");
   const plan = b.plans.find((p) => p.id === it.plan_id);
   const photoGrid = (arr, tag) => arr.map((p) => `<a href="${p.url}" target="_blank" rel="noopener"><img src="${p.url}" alt="${tag} photo" loading="lazy"><span class="tag">${tag}</span>${me.role === "admin" ? `<button class="del" title="Remove photo" onclick="event.preventDefault();delPhoto('${slug}','${p.id}')">&times;</button>` : ""}</a>`).join("");
@@ -512,7 +513,8 @@ async function renderItem(slug, id) {
       <button class="btn" onclick="addPhotos('${slug}','${id}','before')">&#128247; Before</button>
       <button class="btn" onclick="addPhotos('${slug}','${id}','after')">&#128247; After</button>
       <a class="btn" href="#/p/${slug}/plan/${id}">&#128205; ${it.plan_id ? "Move pin" : "Pin on plan"}</a>
-      <button class="btn" onclick="editItem('${slug}','${id}')">&#9998; Edit</button></div>`);
+      <button class="btn" onclick="editItem('${slug}','${id}')">&#9998; Edit</button>
+      <button class="btn" onclick="notified('${slug}','${id}')">&#128222; Told them</button></div>`);
     const row2 = [];
     if (["Open", "Draft", "Not Accepted", "In Dispute"].includes(st) && it.assignee_id) row2.push(`<button class="btn ink" onclick="move('${slug}','${id}','Work Required','Note to the sub (optional)')">Send to sub</button>`);
     if (st === "Draft" && !it.assignee_id) row2.push(`<button class="btn ink" onclick="move('${slug}','${id}','Open','')">Publish</button>`);
@@ -534,6 +536,7 @@ async function renderItem(slug, id) {
         <div><small>Responsible</small>${it.assignee_id ? esc(partyFull(b, it.assignee_id)) : `<span style="color:var(--flag)">Unassigned</span>`}</div>
         <div><small>Due</small>${it.due_date ? (isOverdue(it) ? `<span style="color:var(--s-notacc);font-weight:700">${fmtD(it.due_date)} overdue</span>` : fmtD(it.due_date)) : "No date set"}</div>
         <div><small>Ball in court</small><b>${esc(ballInCourt(it, b))}</b></div>
+        ${me.role === "admin" ? `<div><small>Last told</small>${it.last_notified_at ? `${fmtD(it.last_notified_at)} by ${esc(it.last_notified_how)}` : "never"}</div>` : ""}
         <div class="full"><small>Means</small>${esc(PLAIN[st])}</div>
         ${it.trade ? `<div class="full"><small>Trade</small>${esc(it.trade)}</div>` : ""}
       </div>
@@ -541,12 +544,17 @@ async function renderItem(slug, id) {
         <a href="#/p/${slug}/plan/${id}" class="minimap" style="display:block"><img src="${plan.url}" alt="" style="object-position:${(it.pin_x * 100).toFixed(1)}% ${(it.pin_y * 100).toFixed(1)}%;object-fit:none;transform:scale(.55);transform-origin:center"><span class="pin" style="left:50%;top:50%;width:30px;height:38px">${pinSvg(it.number, STATUS_HEX[st])}</span></a></div>` : me.role === "admin" ? `<div class="sec"><h3>On the plan</h3><a class="btn sm" href="#/p/${slug}/plan/${id}">&#128205; Drop a pin so the sub can find it</a></div>` : ""}
       ${it.notes && me.role !== "owner" ? `<div class="sec"><h3>Notes${subLike() ? " from Alleato" : ""}</h3><div class="notes">${esc(it.notes)}</div></div>` : ""}
       <div class="sec"><h3>Photos <span style="font-weight:500;text-transform:none;letter-spacing:0">${before.length} before &middot; ${after.length} after</span></h3>
-        ${photos.length ? `<div class="photos">${photoGrid(before, "before")}${photoGrid(after, "after")}</div>` : `<div class="empty" style="padding:10px">No photos yet.${subLike() ? " Add one of the finished work and the owner can accept it from their desk." : ""}</div>`}</div>
+        ${photos.length ? `<div class="photos">${photoGrid(before, "before")}${photoGrid(after, "after")}</div>` : `<div class="empty" style="padding:10px">No photos yet.${subLike() ? " Add one of the finished work and the owner can accept it from their desk." : ""}</div>`}
+        ${removedPhotos.length && me.role === "admin" ? `<div class="sub" style="margin-top:8px">Removed (kept on record): ${removedPhotos.map((p) => `<a href="${p.url}" target="_blank" rel="noopener" style="opacity:.6">${p.kind} ${fmtD(p.removed_at)}</a> (${esc(p.removed_reason || "")})`).join(", ")}</div>` : ""}</div>
       <div class="sec"><div class="actions">${A.join("")}</div></div>
       <div class="sec"><h3>History</h3><ul class="hist" id="hist"><li><span class="dot"></span><span class="meta">Loading</span></li></ul>
         <div style="margin-top:12px;display:flex;gap:8px"><input class="in" id="cmt" placeholder="Add a comment" onkeydown="if(event.key==='Enter')comment('${slug}','${id}')"><button class="btn sm ink" onclick="comment('${slug}','${id}')">Post</button></div></div>
     </div>`, { back: b.project.name });
   loadHistory(id);
+}
+function diffText(note) {
+  try { const i = note.indexOf("{"); const d = JSON.parse(note.slice(i)); const pre = note.slice(0, i).trim();
+    return (pre ? pre + " " : "") + Object.entries(d).map(([k, [a, b]]) => `${k}: "${a ?? ""}" → "${b ?? ""}"`).join("; "); } catch { return note; }
 }
 async function loadHistory(id) {
   try {
@@ -561,7 +569,11 @@ async function loadHistory(id) {
       else if (e.action === "photo") what = e.note || "Photo added";
       else if (e.action === "assigned") what = "Reassigned";
       else if (e.action === "edited") what = "Edited";
-      return `<li><span class="dot ${e.action}"></span><div>${what}<div class="meta">${esc(who)} &middot; ${fmtDT(e.created_at)}</div>${e.note && e.action !== "photo" ? `<div class="note">${esc(e.note)}</div>` : ""}</div></li>`;
+      else if (e.action === "pinned") what = "Pin moved";
+      else if (e.action === "notified") what = "Told them";
+      else if (e.action === "photo removed") what = "Photo removed";
+      const noteTxt = e.note && e.note.startsWith("{") ? diffText(e.note) : e.note;
+      return `<li><span class="dot ${e.action}"></span><div>${what}<div class="meta">${esc(who)} &middot; ${fmtDT(e.created_at)}</div>${noteTxt && e.action !== "photo" ? `<div class="note">${esc(noteTxt)}</div>` : ""}</div></li>`;
     }).join("") || `<li><span class="dot"></span><span class="meta">No history.</span></li>`;
   } catch (e) { toast(e.message, true); }
 }
@@ -594,12 +606,18 @@ async function move(slug, id, to, prompt, required) {
   try { await api("transition", { id, to, note }); toast(`Now: ${to}`); await loadBoard(slug, true); render(); }
   catch (e) { toast(e.message, true); }
 }
+async function notified(slug, id) {
+  const bg = sheet(`<h2>Put a text, email or call on the record</h2><div class="field"><label>How</label><select class="in" id="nt_how"><option>text</option><option>email</option><option>call</option><option>in person</option></select></div>
+    <div class="field"><label>Note (who, what was said)</label><input class="in" id="nt_note"></div><div class="btnrow"><button class="btn" id="c">Cancel</button><button class="btn ink" id="s">Record it</button></div>`);
+  $("#c", bg).onclick = () => bg.remove();
+  $("#s", bg).onclick = async () => { try { await api("notified", { id, how: $("#nt_how", bg).value, note: $("#nt_note", bg).value.trim() }); bg.remove(); await loadBoard(slug, true); render(); toast("On the record"); } catch (e) { toast(e.message, true); } };
+}
 async function comment(slug, id) {
   const el = $("#cmt"); const note = el.value.trim(); if (!note) return;
   try { await api("comment", { id, note }); el.value = ""; loadHistory(id); } catch (e) { toast(e.message, true); }
 }
 async function delItem(slug, id) { if (!confirm("Delete this draft?")) return; try { await api("delete", { id }); await loadBoard(slug, true); go(`#/p/${slug}`); } catch (e) { toast(e.message, true); } }
-async function delPhoto(slug, pid) { if (!confirm("Remove this photo?")) return; try { await api("delete_photo", { photo_id: pid }); await loadBoard(slug, true); render(); } catch (e) { toast(e.message, true); } }
+async function delPhoto(slug, pid) { const reason = await ask("Why is this photo being removed? It stays on file and the reason goes in the history.", "", true, "Remove"); if (reason === null) return; try { await api("delete_photo", { photo_id: pid, reason }); await loadBoard(slug, true); render(); } catch (e) { toast(e.message, true); } }
 
 function shrink(file, max = 1600, q = 0.82) {
   return new Promise((res, rej) => {
@@ -820,7 +838,8 @@ async function renderSignoff(slug) {
   const me = S.me; const items = b.items.filter((i) => i.status !== "Draft");
   const open = items.filter((i) => i.status !== "Closed" && i.status !== "Removed");
   const sub = b.signoffs.filter((s) => s.kind === "substantial"), fin = b.signoffs.filter((s) => s.kind === "final");
-  const canSign = ["owner", "admin"].includes(me.role);
+  const canSign = ["owner", "admin"].includes(me.role); const myLine = me.role === "owner" ? "owner" : "alleato";
+  const sigLines = (arr) => ["owner", "alleato"].map((ln) => { const s = arr.find((x) => (x.line || "owner") === ln); return `<div class="chip type" style="margin:0 6px 6px 0">${s ? `&#10003; ${ln === "owner" ? "Owner" : "Alleato"}: ${esc(s.signer_name)} &middot; ${fmtD(s.signed_at)}` : `${ln === "owner" ? "Owner" : "Alleato"}: not signed`}</div>`; }).join("");
   shell(`
     <div class="tabs"><a href="#/p/${slug}">List</a><a href="#/p/${slug}/plan">Plan</a><a class="on" href="#/p/${slug}/signoff">Sign-off</a></div>
     <div class="h"><div><h1>${esc(b.project.name)} sign-off</h1><div class="sub">${open.length ? `${open.length} of ${items.length} items still open` : `All ${items.length} items closed`}</div></div>
@@ -828,11 +847,12 @@ async function renderSignoff(slug) {
     ${b.log.length ? `<div class="sub" style="margin:-6px 0 12px">${b.log.map((l) => `${l.action === "lock" ? "&#128274; Frozen" : "&#128275; Unlocked"} by ${esc(l.parties?.name || "")} ${fmtDT(l.created_at)}${l.note ? ": " + esc(l.note) : ""}`).join("<br>")}</div>` : ""}
     <div class="stack">
       <div class="card" style="padding:16px"><h2 style="font-size:17px">Substantial completion</h2><div class="sub" style="margin:4px 0 10px">The work is substantially complete and the owner can occupy and use it. Open items get finished by their due dates.</div>
-        ${sub.map((s) => `<div class="chip type" style="margin:0 6px 6px 0">&#10003; ${esc(s.signer_name)} &middot; ${fmtD(s.signed_at)}</div>`).join("")}
-        ${canSign ? `<div><button class="btn ${sub.length ? "" : "ink"}" onclick="sign('${slug}','substantial')">Sign as ${esc(me.name)}</button></div>` : ""}</div>
+        ${sigLines(sub)}
+        ${canSign && !sub.some((s) => s.line === myLine) ? `<div><button class="btn ink" onclick="sign('${slug}','substantial')">Sign the ${myLine === "owner" ? "owner's" : "Alleato"} line as ${esc(me.name)}</button></div>` : ""}</div>
       <div class="card" style="padding:16px"><h2 style="font-size:17px">Final acceptance</h2><div class="sub" style="margin:4px 0 10px">Every item closed and verified. The owner accepts the work as complete per the contract.${open.length ? ` <b>Not yet: ${open.length} open.</b>` : ""}</div>
-        ${fin.map((s) => `<div class="chip type" style="margin:0 6px 6px 0">&#10003; ${esc(s.signer_name)} &middot; ${fmtD(s.signed_at)}</div>`).join("")}
-        ${canSign ? `<div><button class="btn ${open.length ? "" : "ok"}" ${open.length ? "disabled" : ""} onclick="sign('${slug}','final')">Sign as ${esc(me.name)}</button></div>` : ""}</div>
+        ${sigLines(fin)}
+        ${canSign && !fin.some((s) => s.line === myLine) ? `<div><button class="btn ${open.length ? "" : "ok"}" ${open.length ? "disabled" : ""} onclick="sign('${slug}','final')">Sign the ${myLine === "owner" ? "owner's" : "Alleato"} line as ${esc(me.name)}</button></div>` : ""}
+        ${me.role === "admin" ? `<div class="sub" style="margin-top:6px">Final acceptance is the owner's. Alleato signs only its own line.</div>` : ""}</div>
       <div class="card"><div class="sec"><h3>Line items</h3>
         <div class="tw"><table style="width:100%;border-collapse:collapse;font-size:13px">
           <tr style="color:var(--muted);text-align:left"><th style="padding:4px">#</th><th>Type</th><th>Item</th><th>Status</th></tr>
@@ -842,7 +862,7 @@ async function renderSignoff(slug) {
 }
 async function sign(slug, kind) {
   const b = S.boards[slug];
-  const bg = sheet(`<h2>${kind === "final" ? "Final acceptance" : "Substantial completion"} &middot; ${esc(b.project.name)}</h2>
+  const bg = sheet(`<h2>${kind === "final" ? "Final acceptance" : "Substantial completion"} &middot; ${esc(b.project.name)} &middot; ${S.me.role === "owner" ? "owner's line" : "Alleato line"}</h2>
     <p style="font-size:14px;color:var(--muted);margin:0 0 12px">${kind === "final" ? "All items on the punch list are complete and verified. The owner accepts the work as complete per the contract." : "The work is substantially complete and the owner can occupy and use it for its intended purpose. Open items will be completed by the responsible parties by their due dates."}</p>
     <div class="field"><label>Type your full name to sign</label><input class="in" id="sg_name" value="${esc(S.me.name)}"></div>
     <div class="field"><label>Note (optional)</label><input class="in" id="sg_note"></div>
@@ -862,7 +882,7 @@ async function renderPrint(slug) {
   const when = (i, to) => { const e = (hist[i.id] || []).filter((x) => x.action === "status" && x.to_status === to).pop(); return e ? fmtD(e.created_at) : ""; };
   const doneDate = (i) => when(i, "Ready for Review") || when(i, "Ready to Close") || when(i, "Closed");
   const verDate = (i) => when(i, "Ready to Close") || (i.status === "Closed" ? when(i, "Closed") : "");
-  const sub = b.signoffs.filter((s) => s.kind === "substantial").pop(), fin = b.signoffs.filter((s) => s.kind === "final").pop();
+  const so = (kind, line) => b.signoffs.find((s) => s.kind === kind && (s.line || "owner") === line);
   const p = b.project;
   const attendees = b.parties.filter((x) => x.role === "admin" || x.role === "owner");
   const rows = items.filter((i) => i.status !== "Removed").map((i) => `<tr><td>${i.number}</td><td>${esc(i.type)}</td><td>${esc(i.area || "")}</td><td>${esc(i.title)}</td><td>${esc(partyName(b, i.assignee_id))}</td><td>${esc(i.status)}</td><td>${doneDate(i) ? "&#10003; " + doneDate(i) : ""}</td><td>${verDate(i) ? "&#10003; " + verDate(i) : ""}</td><td>${i.status === "Closed" ? "&#10003; " + fmtD(i.closed_at) : ""}</td></tr>`).join("");
@@ -879,10 +899,10 @@ async function renderPrint(slug) {
       <table><tr><th>Name</th><th>Company</th><th>Role</th><th>Phone / email</th></tr>${attendees.map((a) => `<tr><td>${esc(a.name)}</td><td>${esc(a.company || "")}</td><td>${a.role === "owner" ? "Owner's Representative" : "Alleato Group"}</td><td>${esc([a.phone, a.email].filter(Boolean).join(" / "))}</td></tr>`).join("")}</table>
       <h2>Substantial completion</h2>
       <div class="box">The undersigned agree the work is substantially complete and the owner can occupy and use it for its intended purpose. All open items on the attached punch list will be completed by the responsible parties by their due dates.</div>
-      <div class="sig"><div><b>Owner's representative</b><br>${sub && sub.signer_name ? `Signed electronically in Punchline by ${esc(sub.signer_name)} on ${fmtD(sub.signed_at)}` : "Signature / printed name / date"}</div><div><b>Alleato Group project manager</b><br>Signature / printed name / date</div></div>
+      <div class="sig"><div><b>Owner's representative</b><br>${so("substantial", "owner") ? `Signed electronically in Punchline by ${esc(so("substantial", "owner").signer_name)} on ${fmtD(so("substantial", "owner").signed_at)}` : "Signature / printed name / date"}</div><div><b>Alleato Group</b><br>${so("substantial", "alleato") ? `Signed electronically in Punchline by ${esc(so("substantial", "alleato").signer_name)} on ${fmtD(so("substantial", "alleato").signed_at)}` : "Signature / printed name / date"}</div></div>
       <h2>Final acceptance</h2>
       <div class="box">All items on the attached punch list are complete and verified by Alleato, and all closeout deliverables have been received. The owner accepts the work as complete per the contract.</div>
-      <div class="sig"><div><b>Owner's representative</b><br>${fin && fin.signer_name ? `Signed electronically in Punchline by ${esc(fin.signer_name)} on ${fmtD(fin.signed_at)}` : "Signature / printed name / date"}</div><div><b>Alleato Group project manager</b><br>Signature / printed name / date</div></div>
+      <div class="sig"><div><b>Owner's representative</b><br>${so("final", "owner") ? `Signed electronically in Punchline by ${esc(so("final", "owner").signer_name)} on ${fmtD(so("final", "owner").signed_at)}` : "Signature / printed name / date"}</div><div><b>Alleato Group</b><br>${so("final", "alleato") ? `Signed electronically in Punchline by ${esc(so("final", "alleato").signer_name)} on ${fmtD(so("final", "alleato").signed_at)}` : "Signature / printed name / date"}</div></div>
       <div class="pg"></div>
       <h2>Punch list - line items</h2>
       <p style="font-size:9pt">Punch = ties directly to an originally contracted scope item. C/O = not in the original scope, or an owner-requested change to completed contract work. Orig Scope - Gated = contracted scope still open, waiting on owner action or material. Done = sub marked complete with photo. Verified = Alleato verified. Owner = owner accepted in Punchline.</p>
@@ -944,8 +964,8 @@ async function packagePdf(slug) {
 }
 function exportCsv(slug) {
   const b = S.boards[slug];
-  const cols = ["number", "type", "area", "title", "responsible", "status", "due_date", "trade", "photos", "closed_at", "notes"];
-  const lines = [cols.join(",")].concat(b.items.map((i) => cols.map((c) => { let v = c === "responsible" ? partyFull(b, i.assignee_id) : c === "photos" ? b.photos.filter((p) => p.item_id === i.id).length : i[c] ?? ""; return `"${String(v).replace(/"/g, '""')}"`; }).join(",")));
+  const cols = ["number", "type", "area", "title", "responsible", "status", "ball_in_court", "due_date", "overdue", "last_notified", "trade", "photos", "closed_at", "notes"];
+  const lines = [cols.join(",")].concat(b.items.map((i) => cols.map((c) => { let v = c === "responsible" ? partyFull(b, i.assignee_id) : c === "ball_in_court" ? ballInCourt(i, b) : c === "overdue" ? (isOverdue(i) ? "yes" : "") : c === "last_notified" ? (i.last_notified_at ? `${fmtD(i.last_notified_at)} ${i.last_notified_how}` : "") : c === "photos" ? b.photos.filter((p) => p.item_id === i.id && !p.removed_at).length : i[c] ?? ""; return `"${String(v).replace(/"/g, '""')}"`; }).join(",")));
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" })); a.download = `${b.project.name}-punch-${new Date().toISOString().slice(0, 10)}.csv`; a.click();
 }
 
@@ -973,7 +993,7 @@ function jobplannerExport(slug) {
   const party = (id) => { const x = b.parties.find((q) => q.id === id); return x ? { contactName: x.name, companyName: x.company || "", email: x.email || "" } : null; };
   const prio = { Low: 0, Normal: 1, High: 2 }; // JobPlanner priority as inferred 10/27 (docs/jobplanner-transfer.md): 0 low .. 3 critical
   const bic = (it) => { const s = it.status; if (["Work Required", "Not Accepted", "Open"].includes(s)) return party(it.assignee_id); if (["Ready for Review", "In Dispute"].includes(s)) return { contactName: p.field_lead || "Alleato", companyName: "Alleato Group", email: "" }; if (s === "Ready to Close") return { contactName: p.owner_rep || "Owner", companyName: p.owner_name || "", email: "" }; return null; };
-  const ph = (id, kind) => b.photos.filter((x) => x.item_id === id && x.kind === kind).map((x) => ({ url: x.url, takenOn: x.created_at, note: "signed link, valid 6 h from export; re-export for fresh links" }));
+  const ph = (id, kind) => b.photos.filter((x) => x.item_id === id && x.kind === kind && !x.removed_at).map((x) => ({ url: x.url, takenOn: x.created_at, note: "signed link, valid 6 h from export; re-export for fresh links" }));
   const records = items.map((it) => ({
     itemNumber: String(it.number).padStart(3, "0"), title: it.title, category: it.type, location: it.area || "", locationId: 0,
     dueDate: it.due_date ? it.due_date + "T12:00:00.000Z" : null, priority: prio[it.priority] ?? 1, groups: it.trade ? [{ groupName: it.trade }] : [],
@@ -982,7 +1002,7 @@ function jobplannerExport(slug) {
     beforeAttachments: ph(it.id, "before"), afterAttachments: ph(it.id, "after"),
     workCompletedBy: ["Ready for Review", "Ready to Close", "Closed"].includes(it.status) ? party(it.assignee_id) : null,
     workCompletedOn: null, resolvedBy: it.status === "Closed" ? { contactName: p.owner_rep || "", companyName: p.owner_name || "", email: "" } : null, resolvedOn: it.closed_at,
-    punchline: { id: it.id, status: it.status, type: it.type, ballInCourt: bic(it), plan: it.plan_id ? { pin_x: it.pin_x, pin_y: it.pin_y } : null, link: `${location.origin}${location.pathname}#/p/${slug}/i/${it.id}`, pushRecommended: it.type === "Punch" && it.status !== "Removed" },
+    punchline: { id: it.id, status: it.status, type: it.type, overdue: isOverdue(it), lastNotified: it.last_notified_at ? { at: it.last_notified_at, how: it.last_notified_how } : null, ballInCourt: bic(it), plan: it.plan_id ? { pin_x: it.pin_x, pin_y: it.pin_y } : null, link: `${location.origin}${location.pathname}#/p/${slug}/i/${it.id}`, pushRecommended: it.type === "Punch" && it.status !== "Removed" },
   }));
   const out = { store: p.name, job_no: p.job_no, exportedAt: new Date().toISOString(), jobplanner: { projectId: p.jobplanner_id || null, statusMap: { "0": "open / with the sub (Punchline: Open, Work Required, Not Accepted, In Dispute, Draft)", "1": "in review (Punchline: Ready for Review, Ready to Close)", "2": "closed (Punchline: Closed; Removed also 2, with a REMOVED note)" }, note: "Shape follows PunchlistItemModel (GET/POST /projects/{id}/punchlists), see docs/jobplanner-transfer.md. ballInCourt is read-only in JobPlanner and is carried under punchline.* only. priority 0 low, 1 normal, 2 high. assignedTo = JobPlanner project contact: match by email to /projects/{id}/contacts (negative id = Alleato user). groups: match groupName to the master trade list (26 Electrical = 10109, 09 Finishes = 10100, 23 HVAC = 10108, 22 Plumbing = 10106). C/O and Orig Scope - Gated records are included for the record but pushRecommended = false: they are scope items, not deficiencies. Pushing needs a write-capable key (tools/jobplanner_push.py); the standing key is read-only." }, listFrozen: p.locked_at ? { by: p.locked_by, at: p.locked_at } : null, records };
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(out, null, 1)], { type: "application/json" })); a.download = `${p.name} jobplanner punch ${new Date().toISOString().slice(0, 10)}.json`; a.click();
