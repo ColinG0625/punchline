@@ -951,7 +951,7 @@ async function renderPage(name, title) {
   shell(loading(), { back });
   try {
     if (!pageCache[name]) { const r = await fetch(`pages/${name}.html`, { cache: "no-cache" }); if (!r.ok) throw new Error("page not published"); pageCache[name] = await r.text(); }
-    shell(`<style>.pl-how,.pl-ben{font-family:inherit;--ink:var(--ink);--accent:var(--flag);--soft:var(--soft);--line:var(--line);--muted:var(--muted);padding:0}.pl-how ol.steps li,.pl-ben .stat,.pl-ben table{background:var(--card)}</style>${pageCache[name]}
+    shell(`<style>.pl-how,.pl-ben{font-family:inherit;--ink:var(--ink);--accent:var(--flag);--soft:var(--soft);--line:var(--line);--muted:var(--muted);padding:0}.pl-how ol.steps li,.pl-ben .stat,.pl-ben table{background:var(--card)}.pl-how ol.steps li{display:block}.pl-how ol.steps p{color:var(--ink)}</style>${pageCache[name]}
       ${name === "how-punch-works" ? statusTable() : ""}`, { back });
   } catch (e) { if (name === "how-punch-works") return renderProcess(); shell(`<div class="empty">${esc(e.message)}</div>`, { back }); }
 }
