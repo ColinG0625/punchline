@@ -494,7 +494,7 @@ async function renderItem(slug, id) {
   if (subLike()) {
     if (["Open", "Work Required", "Not Accepted", "In Dispute"].includes(st)) {
       A.push(`<button class="btn primary" onclick="addPhotos('${slug}','${id}','after')">&#128247; Add photo of the finished work</button>`);
-      A.push(`<button class="btn ok" onclick="move('${slug}','${id}','Ready for Review','Anything Alleato should know? (optional)')">&#10003; Mark complete, send for review</button>`);
+      A.push(`<button class="btn ok" onclick="subComplete('${slug}','${id}')">&#10003; Mark complete, send for review</button>`);
       if (st !== "In Dispute") A.push(`<button class="btn ghost" onclick="move('${slug}','${id}','In Dispute','Why are you disputing this item?',true)">Dispute this item</button>`);
     }
     if (st === "Ready for Review") A.push(`<div class="empty" style="padding:12px">Sent to Alleato for review. Add more photos any time.</div><button class="btn" onclick="addPhotos('${slug}','${id}','after')">&#128247; Add another photo</button>`);
@@ -581,6 +581,12 @@ function ask(title, placeholder, required, okLabel = "Confirm") {
     $("#askok", bg).onclick = () => { const v = $("#asknote", bg).value.trim(); if (required && !v) { toast("A note is needed here", true); return; } bg.remove(); res(v); };
     setTimeout(() => $("#asknote", bg).focus(), 50);
   });
+}
+// Sub marks complete: no after photo yet means open the camera, not the note sheet (nothing typed gets thrown away).
+function subComplete(slug, id) {
+  const b = S.boards[slug]; const after = (b?.photos || []).filter((p) => p.item_id === id && p.kind === "after");
+  if (!after.length) { toast("Take a photo of the finished work first"); return addPhotos(slug, id, "after"); }
+  return move(slug, id, "Ready for Review", "Anything Alleato should know? (optional)");
 }
 async function move(slug, id, to, prompt, required) {
   let note = "";
