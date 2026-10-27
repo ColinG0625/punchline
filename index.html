@@ -348,6 +348,8 @@ function render() {
     const slug = parts[1];
     if (parts[2] === "i" && parts[3]) return renderItem(slug, parts[3]);
     if (parts[2] === "plan") return renderPlan(slug, parts[3]);
+    if (parts[2] === "walk") return renderWalk(slug);
+    if (parts[2] === "walks") return parts[3] ? renderWalkReview(slug, parts[3]) : renderWalks(slug);
     if (parts[2] === "signoff") return renderSignoff(slug);
     if (parts[2] === "print") return renderPrint(slug);
     return renderBoard(slug);
@@ -463,7 +465,7 @@ async function renderBoard(slug) {
     ${lockBanner(b)}
     ${storeLine(b)}
     ${b.project.notes && me.role !== "owner" ? `<div class="sub" style="margin:-6px 0 12px">${esc(b.project.notes)}</div>` : ""}
-    <div class="tabs"><a class="on" href="#/p/${slug}">List</a><a href="#/p/${slug}/plan">Plan</a><a href="#/p/${slug}/signoff">Sign-off</a></div>
+    <div class="tabs"><a class="on" href="#/p/${slug}">List</a><a href="#/p/${slug}/plan">Plan</a>${me.role === "admin" || me.role === "helper" ? `<a href="#/p/${slug}/walk">Walk</a>` : ""}<a href="#/p/${slug}/signoff">Sign-off</a></div>
     <div class="filters">${Object.entries(F).map(([k, v]) => `<button class="fbtn ${S.filter === k ? "on" : ""}" onclick="S.filter='${k}';render()">${v.label}<span class="n">${items.filter(v.f).length}</span></button>`).join("")}
       <button class="fbtn ${byRoom ? "on" : ""}" onclick="S.group=S.group==='room'?'':'room';render()">By room</button>
       <select class="sel" onchange="S.type=this.value;render()"><option value="">Any type</option>${TYPES.map((t) => `<option ${S.type === t ? "selected" : ""}>${t}</option>`).join("")}</select>
@@ -819,6 +821,113 @@ function showPop(e, slug, id) {
   setTimeout(() => document.addEventListener("click", () => pop.remove(), { once: true }), 10);
 }
 
+// ---------- walk mode ----------
+// Minimal EXIF reader: DateTimeOriginal and GPS from a JPEG's APP1 segment. Returns {} when absent.
+function readExif(buf) {
+  try {
+    const v = new DataView(buf); if (v.getUint16(0) !== 0xFFD8) return {};
+    let o = 2;
+    while (o < v.byteLength - 4) {
+      const marker = v.getUint16(o); const len = v.getUint16(o + 2);
+      if (marker === 0xFFE1 && v.getUint32(o + 4) === 0x45786966) { // "Exif"
+        const t = o + 10; const le = v.getUint16(t) === 0x4949; const g16 = (p) => v.getUint16(p, le), g32 = (p) => v.getUint32(p, le);
+        const out = {}; const rat = (p) => g32(p) / (g32(p + 4) || 1);
+        const readIfd = (off, cb) => { const n = g16(t + off); for (let i = 0; i < n; i++) { const e = t + off + 2 + i * 12; cb(g16(e), g16(e + 2), g32(e + 4), e + 8); } };
+        const str = (cnt, vp) => { const p = cnt > 4 ? t + g32(vp) : vp; let r = ""; for (let i = 0; i < cnt - 1; i++) r += String.fromCharCode(v.getUint8(p + i)); return r; };
+        const dms = (vp) => { const p = t + g32(vp); return rat(p) + rat(p + 8) / 60 + rat(p + 16) / 3600; };
+        let exifOff = 0, gpsOff = 0;
+        readIfd(g32(t + 4), (tag, type, cnt, vp) => { if (tag === 0x8769) exifOff = g32(vp); if (tag === 0x8825) gpsOff = g32(vp); if (tag === 0x0132) out.modified = str(cnt, vp); });
+        if (exifOff) readIfd(exifOff, (tag, type, cnt, vp) => { if (tag === 0x9003) out.taken = str(cnt, vp); });
+        if (gpsOff) { let latR = "N", lngR = "E", lat, lng; readIfd(gpsOff, (tag, type, cnt, vp) => { if (tag === 1) latR = str(cnt, vp); if (tag === 2) lat = dms(vp); if (tag === 3) lngR = str(cnt, vp); if (tag === 4) lng = dms(vp); }); if (lat != null && lng != null) { out.lat = latR === "S" ? -lat : lat; out.lng = lngR === "W" ? -lng : lng; } }
+        if (out.taken) { const m = /^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})/.exec(out.taken); if (m) out.takenIso = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).toISOString(); }
+        return out;
+      }
+      if ((marker & 0xFF00) !== 0xFF00) break;
+      o += 2 + len;
+    }
+  } catch {}
+  return {};
+}
+const W = { walk: null, pin: null, item: "", note: "" };
+async function renderWalk(slug) {
+  shell(loading(), { back: slug, wide: true });
+  const b = await loadBoard(slug);
+  const me = S.me; if (!(me.role === "admin" || me.role === "helper")) return go(`#/p/${slug}`);
+  const plan = b.plans.find((p) => p.id === S.planId) || b.plans[0];
+  if (!W.walk || W.walk.project_id !== b.project.id) { try { const r = await api("walk_start", { project_id: b.project.id }); W.walk = r.walk; if (r.resumed) toast("Picked up your open walk"); } catch (e) { return shell(`<div class="empty">${esc(e.message)}</div>`, { back: b.project.name }); } }
+  document.title = `${b.project.name} walk · Punchline`;
+  const openItems = b.items.filter((i) => !["Closed", "Removed"].includes(i.status));
+  shell(`
+    <div class="tabs"><a href="#/p/${slug}">List</a><a href="#/p/${slug}/plan">Plan</a><a class="on" href="#/p/${slug}/walk">Walk</a><a href="#/p/${slug}/signoff">Sign-off</a></div>
+    <div class="sub" style="margin:-6px 0 10px">Walk ${fmtD(W.walk.walk_date)} &middot; started ${fmtDT(W.walk.started_at)} &middot; <a href="#/p/${slug}/walks">all walks</a> &middot; <button class="btn sm ghost" onclick="endWalk('${slug}')">End walk</button></div>
+    ${plan ? `<div class="planwrap" style="height:46dvh;min-height:280px">
+      <div class="planhint">${W.pin ? `Standing in ${esc(W.pin.room || "an unlabeled spot")}. Shoot.` : "Tap the plan where you stand"}</div>
+      <div class="planscroll" id="ps"><div class="planstage" id="stage" style="width:${plan.width}px;height:${plan.height}px">
+        <img src="${plan.url}" width="${plan.width}" height="${plan.height}" alt="" draggable="false">
+        ${W.pin ? `<span class="pin lg" style="left:${W.pin.x * 100}%;top:${W.pin.y * 100}%">${pinSvg("&#9679;", "#E4572E")}</span>` : ""}
+      </div></div>
+      <div class="planctl"><button onclick="zoomPlan(1.4)">+</button><button onclick="zoomPlan(1/1.4)">&minus;</button><button onclick="fitPlan()" style="font-size:12px">fit</button></div></div>` : `<div class="empty">No plan for this store; shots will be saved without a pin.</div>`}
+    <div class="card" style="padding:14px;margin-top:10px">
+      <div class="field"><label>For an existing item (optional)</label><select class="in" id="wk_item" onchange="W.item=this.value"><option value="">New walk shot (not an item yet)</option>${openItems.map((i) => `<option value="${i.id}" ${W.item === i.id ? "selected" : ""}>#${i.number} ${esc(i.title.slice(0, 60))}</option>`).join("")}</select></div>
+      <div class="field"><label>One-line note (optional)</label><input class="in" id="wk_note" value="${esc(W.note)}" oninput="W.note=this.value" placeholder="What you see"></div>
+      <button class="btn primary" style="width:100%;font-size:17px;min-height:56px" onclick="walkShoot('${slug}')">&#128247; Shoot ${W.pin ? "" : "(no pin yet)"}</button>
+      <div class="sub" id="wk_status" style="margin-top:8px">${W.walk.shots_done ? `${W.walk.shots_done} shot${W.walk.shots_done === 1 ? "" : "s"} this walk` : ""}</div>
+    </div>`, { back: b.project.name, wide: true });
+  if (plan) {
+    const stage = $("#stage"); fitPlan(); stage.style.cursor = "crosshair";
+    stage.addEventListener("click", (e) => { const r = stage.getBoundingClientRect(); const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height; W.pin = { x: +x.toFixed(4), y: +y.toFixed(4), plan_id: plan.id, room: roomOf({ plan_id: plan.id, pin_x: x, pin_y: y }, b) }; renderWalk(slug); });
+    if (W.pin) setTimeout(() => centerOn(W.pin.x, W.pin.y), 50);
+  }
+}
+async function endWalk(slug) { if (!W.walk) return; if (!confirm("End this walk?")) return; try { await api("walk_end", { walk_id: W.walk.id }); W.walk = null; W.pin = null; toast("Walk ended"); go(`#/p/${slug}/walks`); } catch (e) { toast(e.message, true); } }
+function walkShoot(slug) {
+  const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*"; inp.capture = "environment";
+  inp.onchange = async () => {
+    const f = inp.files[0]; if (!f) return;
+    const st = $("#wk_status"); if (st) st.textContent = "Reading photo";
+    let gps = null; try { gps = await new Promise((res) => { if (!navigator.geolocation) return res(null); navigator.geolocation.getCurrentPosition((p) => res({ lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy }), () => res(null), { timeout: 4000, maximumAge: 60000 }); }); } catch {}
+    const buf = await f.arrayBuffer(); const exif = readExif(buf);
+    const display = await shrink(f);
+    let original = null; if (buf.byteLength <= 12_000_000) { const b64 = btoa(new Uint8Array(buf).reduce((a, c) => a + String.fromCharCode(c), "")); original = b64; }
+    if (st) st.textContent = "Uploading";
+    try {
+      const r = await api("walk_shot", { walk_id: W.walk.id, item_id: W.item || null, plan_id: W.pin?.plan_id || null, pin_x: W.pin?.x ?? null, pin_y: W.pin?.y ?? null, room: W.pin?.room || null, note: W.note,
+        shot_at: exif.takenIso || new Date(f.lastModified || Date.now()).toISOString(), lat: exif.lat ?? gps?.lat ?? null, lng: exif.lng ?? gps?.lng ?? null, exif: { ...exif, phone_gps: gps, file: f.name, bytes: buf.byteLength, type: f.type }, data: display, original, original_type: f.type || "image/jpeg" });
+      W.walk.shots_done = (W.walk.shots_done || 0) + 1; W.note = ""; toast(`Shot ${W.walk.shots_done} saved${r.shot.room ? " in " + r.shot.room : ""}${exif.lat != null ? " (GPS from photo)" : gps ? " (phone GPS)" : ""}`);
+      renderWalk(slug);
+    } catch (e) { toast(e.message, true); if (st) st.textContent = "Not saved: " + e.message; }
+  };
+  inp.click();
+}
+async function renderWalks(slug) {
+  shell(loading(), { back: slug });
+  const b = await loadBoard(slug); if (!(S.me.role === "admin" || S.me.role === "helper")) return go(`#/p/${slug}`);
+  const r = await api("walks", { project_id: b.project.id });
+  document.title = `${b.project.name} walks · Punchline`;
+  shell(`<div class="h"><div><h1>${esc(b.project.name)} walks</h1><div class="sub">${r.walks.length} walk${r.walks.length === 1 ? "" : "s"}</div></div><a class="btn sm ink" href="#/p/${slug}/walk">Start / continue walk</a></div>
+    <div class="card">${r.walks.map((w) => `<a class="item" href="#/p/${slug}/walks/${w.id}"><div class="num" style="font-size:12px">${w.shots}</div><div><div class="t">${fmtD(w.walk_date)} &middot; ${esc(w.parties?.name || "")}</div><div class="m"><span>${w.ended_at ? "ended " + fmtDT(w.ended_at) : "open"}</span>${w.note ? `<span>${esc(w.note)}</span>` : ""}</div></div></a>`).join("") || `<div class="empty">No walks yet.</div>`}</div>`, { back: b.project.name });
+}
+async function renderWalkReview(slug, walkId) {
+  shell(loading(), { back: "Walks" });
+  const b = await loadBoard(slug); if (!(S.me.role === "admin" || S.me.role === "helper")) return go(`#/p/${slug}`);
+  const r = await api("walk", { walk_id: walkId });
+  document.title = `Walk ${fmtD(r.walk.walk_date)} · Punchline`;
+  const groups = {}; for (const sh of r.shots) (groups[sh.room || "Unplaced"] ||= []).push(sh);
+  const itemOf = (id) => b.items.find((i) => i.id === id);
+  shell(`<div class="h"><div><h1>Walk ${fmtD(r.walk.walk_date)}</h1><div class="sub">${esc(r.walk.parties?.name || "")} &middot; ${r.shots.length} shots &middot; ${r.walk.ended_at ? "ended " + fmtDT(r.walk.ended_at) : "open"}</div></div></div>
+    ${Object.keys(groups).sort().map((room) => `<div class="group">${esc(room)} (${groups[room].length})</div><div class="card">${groups[room].map((sh) => `
+      <div class="sec" style="display:grid;grid-template-columns:96px 1fr;gap:12px">
+        <a href="${sh.original_url || sh.url}" target="_blank" rel="noopener"><img src="${sh.url}" style="width:96px;height:96px;object-fit:cover;border-radius:8px" alt=""></a>
+        <div><div style="font-weight:600">${esc(sh.note || "(no note)")}</div>
+          <div class="sub">${fmtDT(sh.shot_at)} &middot; ${esc(sh.parties?.name || "")}${sh.lat != null ? ` &middot; GPS ${sh.lat.toFixed(5)}, ${sh.lng.toFixed(5)}` : " &middot; no GPS"}${sh.original_path ? " &middot; original kept" : " &middot; display copy only"}</div>
+          ${sh.item_id && itemOf(sh.item_id) ? `<div class="sub">For <a href="#/p/${slug}/i/${sh.item_id}">#${itemOf(sh.item_id).number} ${esc(itemOf(sh.item_id).title.slice(0, 50))}</a></div>` : sh.converted_item_id ? `<div class="sub">Now item <a href="#/p/${slug}/i/${sh.converted_item_id}">#${itemOf(sh.converted_item_id)?.number ?? ""}</a></div>` : S.me.role === "admin" ? `<button class="btn sm ink" style="margin-top:6px" onclick="shotToItem('${slug}','${sh.id}','${walkId}')">Make it an item</button>` : ""}
+        </div></div>`).join("")}</div>`).join("") || `<div class="empty">No shots on this walk.</div>`}`, { back: "Walks" });
+}
+async function shotToItem(slug, shotId, walkId) {
+  const title = await ask("Item title (what needs doing)", "", true, "Create item"); if (title === null) return;
+  try { const r = await api("walk_to_item", { shot_id: shotId, title }); toast(`#${r.item.number} created as Draft`); await loadBoard(slug, true); renderWalkReview(slug, walkId); } catch (e) { toast(e.message, true); }
+}
+
 // ---------- sub: my work ----------
 async function renderWork() {
   shell(loading());
@@ -835,7 +944,7 @@ async function renderWork() {
       <div class="sub" style="margin-top:4px">${due.today.length ? `<b style="color:var(--flag)">Today / overdue:</b> ${[...new Set(due.today.map((i) => i.projects.name))].map((n) => `${esc(n)} (${due.today.filter((i) => i.projects.name === n).map((i) => "#" + i.number).join(", ")})`).join("; ")}` : "Nothing dated for today."}
       ${due.week.length ? `<br><b>This week:</b> ${[...new Set(due.week.map((i) => i.projects.name))].map((n) => `${esc(n)} (${due.week.filter((i) => i.projects.name === n).map((i) => "#" + i.number + " " + fmtD(i.due_date)).join(", ")})`).join("; ")}` : ""}</div></div>` : "";
   const sections = Object.values(byProj).map(({ p, items }) => `
-    <div class="group">${esc(p.name)} &middot; ${esc(p.address || "")}${p.walk_date ? ` &middot; walk ${fmtD(p.walk_date)}` : ""}${p.manager_name ? ` &middot; store manager ${esc(p.manager_name)}` : ""}</div>
+    <div class="group">${esc(p.name)} &middot; ${esc(p.address || "")}${p.walk_date ? ` &middot; walk ${fmtD(p.walk_date)}` : ""}${p.manager_name ? ` &middot; store manager ${esc(p.manager_name)}` : ""}${S.me.role === "helper" ? ` &middot; <a href="#/p/${p.slug}/walk">Walk mode</a>` : ""}</div>
     <div class="card">${items.map((it) => `
       <a class="item ${it.plan_id ? "pinned" : ""}" href="#/p/${p.slug}/i/${it.id}"><div class="num">${it.number}</div>
         <div><div class="t">${esc(it.title)}</div><div class="m">${stChip(it.status)}${tyChip(it.type)}${it.area ? `<span>${esc(it.area)}</span>` : ""}${isOverdue(it) ? `<span style="color:var(--s-notacc);font-weight:700">overdue</span>` : it.due_date ? `<span>due ${fmtD(it.due_date)}</span>` : ""}</div></div></a>`).join("")}</div>`).join("");
