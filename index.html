@@ -11,6 +11,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23E4572E'/%3E%3Cpath d='M32 12c-8.3 0-15 6.5-15 14.6 0 10.6 15 25.4 15 25.4s15-14.8 15-25.4C47 18.5 40.3 12 32 12z' fill='%23fff'/%3E%3Ccircle cx='32' cy='27' r='5.5' fill='%23E4572E'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@87.5,400;87.5,500;87.5,600;87.5,700;87.5,800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
 <style>
 :root{
   --ink:#16191D; --paper:#F4F2EC; --card:#FFFFFF; --line:#E2DED6; --muted:#6B7078; --soft:#F0EDE6;
@@ -264,6 +265,7 @@ const TYPES = ["Punch","C/O","Orig Scope - Gated"];
 
 // ---------- state ----------
 const S = { k: null, me: null, projects: null, boards: {}, work: null, filter: "all", type: "", who: "", placing: null };
+const subLike = () => S.me && (S.me.role === "sub" || S.me.role === "helper");
 const MARK = `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="M32 8c-9.9 0-18 7.8-18 17.5C14 38.2 32 56 32 56s18-17.8 18-30.5C50 15.8 41.9 8 32 8z" fill="#fff"/><circle cx="32" cy="25.5" r="6.5" fill="#E4572E"/></svg>`;
 
 const qs = new URLSearchParams(location.search);
@@ -331,7 +333,7 @@ function shell(inner, opts = {}) {
   $("#app").innerHTML = `
     <header class="bar"><div class="wrap">
       ${opts.back ? `<button class="back" onclick="history.length>1?history.back():go('')">&#8592; ${esc(opts.back)}</button>` : `<a class="brand" href="#/"><span class="mark">${MARK}</span><span>Punch<b>line</b></span></a>`}
-      <div class="who">${esc(me.name)}<small>${esc(me.company || "")} &middot; ${me.role === "admin" ? "Alleato" : me.role === "owner" ? "Owner" : "Subcontractor"}</small></div>
+      <div class="who">${esc(me.name)}<small>${esc(me.company || "")} &middot; ${me.role === "admin" ? "Alleato" : me.role === "owner" ? "Owner" : me.role === "helper" ? "Alleato field" : "Subcontractor"}</small></div>
     </div></header>
     <main class="wrap ${opts.wide ? "wide" : ""}"><div class="page">${inner}</div></main>`;
   window.scrollTo(0, 0);
@@ -362,7 +364,7 @@ function countsFor(items) {
 }
 async function renderHome() {
   const me = S.me;
-  if (me.role === "sub") return renderWork();
+  if (subLike()) return renderWork();
   document.title = "Punchline";
   shell(loading());
   // load every board for counts (small data)
@@ -416,14 +418,35 @@ async function renderBoard(slug) {
   shell(`
     <div class="h"><div><h1>${esc(b.project.name)}</h1><div class="sub">${esc(b.project.job_no || "")} &middot; ${esc(b.project.address || "")}</div></div>
       <div class="sub" style="text-align:right">${c.open} open<br>${c.closed} closed</div></div>
+    ${lockBanner(b)}
+    ${b.project.notes && me.role !== "owner" ? `<div class="sub" style="margin:-6px 0 12px">${esc(b.project.notes)}</div>` : ""}
     <div class="tabs"><a class="on" href="#/p/${slug}">List</a><a href="#/p/${slug}/plan">Plan</a><a href="#/p/${slug}/signoff">Sign-off</a></div>
     <div class="filters">${Object.entries(F).map(([k, v]) => `<button class="fbtn ${S.filter === k ? "on" : ""}" onclick="S.filter='${k}';render()">${v.label}<span class="n">${items.filter(v.f).length}</span></button>`).join("")}
       <select class="sel" onchange="S.type=this.value;render()"><option value="">Any type</option>${TYPES.map((t) => `<option ${S.type === t ? "selected" : ""}>${t}</option>`).join("")}</select>
-      ${me.role !== "sub" && subs.length ? `<select class="sel" onchange="S.who=this.value;render()"><option value="">Anyone</option>${subs.map((p) => `<option value="${p.id}" ${S.who === p.id ? "selected" : ""}>${esc(partyName(b, p.id))}</option>`).join("")}</select>` : ""}
+      ${!subLike() && subs.length ? `<select class="sel" onchange="S.who=this.value;render()"><option value="">Anyone</option>${subs.map((p) => `<option value="${p.id}" ${S.who === p.id ? "selected" : ""}>${esc(partyName(b, p.id))}</option>`).join("")}</select>` : ""}
     </div>
     <div class="card">${rows || `<div class="empty">Nothing here.</div>`}</div>
-    ${me.role === "admin" ? `<button class="fab" title="New item" onclick="newItem('${slug}')">+</button>` : ""}
+    ${me.role === "admin" && !b.project.locked_at ? `<button class="fab" title="New item" onclick="newItem('${slug}')">+</button>` : ""}
   `, { back: "Stores" });
+}
+function lockBanner(b) {
+  const p = b.project, me = S.me;
+  if (p.locked_at) return `<div class="card" style="padding:12px 14px;margin-bottom:12px;border-color:var(--s-closed)"><b>&#128274; List frozen</b> &middot; agreed by ${esc(p.locked_by)} on ${fmtD(p.locked_at)}. No items can be added.${me.role === "admin" ? ` <button class="btn sm ghost" style="margin-left:8px" onclick="unlockList('${p.slug}')">Unlock (recorded)</button>` : ""}</div>`;
+  if (me.role === "owner") return `<div class="card" style="padding:12px 14px;margin-bottom:12px;border-color:var(--flag)"><b>This list is not frozen yet.</b> <span class="sub">Review every item, then agree to it. After that nothing gets added without a recorded unlock.</span><div style="margin-top:8px"><button class="btn sm primary" onclick="lockList('${p.slug}')">I agree to this list, freeze it</button></div></div>`;
+  if (me.role === "admin") return `<div class="sub" style="margin:-4px 0 12px">List open for adds. ${b.log.length ? `Last: ${esc(b.log[b.log.length - 1].action)} by ${esc(b.log[b.log.length - 1].parties?.name || "")} ${fmtD(b.log[b.log.length - 1].created_at)}.` : ""} <button class="btn sm ghost" onclick="lockList('${p.slug}')">Freeze now</button></div>`;
+  return "";
+}
+async function lockList(slug) {
+  const b = S.boards[slug];
+  const note = await ask(S.me.role === "owner" ? `Freeze the ${b.project.name} list as it stands (${b.items.filter((i) => i.status !== "Draft").length} items)? Add a note if you like.` : `Freeze the ${b.project.name} list? Note (optional)`, "", false, "Freeze");
+  if (note === null) return;
+  try { await api("lock", { project_id: b.project.id, note }); toast("List frozen"); await loadBoard(slug, true); render(); } catch (e) { toast(e.message, true); }
+}
+async function unlockList(slug) {
+  const b = S.boards[slug];
+  const note = await ask("Why is the frozen list being opened? This goes on the record with your name and the time.", "", true, "Unlock");
+  if (note === null) return;
+  try { await api("unlock", { project_id: b.project.id, note }); toast("List open"); await loadBoard(slug, true); render(); } catch (e) { toast(e.message, true); }
 }
 
 // ---------- item ----------
@@ -441,7 +464,7 @@ async function renderItem(slug, id) {
   // actions by role + status
   const A = [];
   const st = it.status;
-  if (me.role === "sub") {
+  if (subLike()) {
     if (["Open", "Work Required", "Not Accepted", "In Dispute"].includes(st)) {
       A.push(`<button class="btn primary" onclick="addPhotos('${slug}','${id}','after')">&#128247; Add photo of the finished work</button>`);
       A.push(`<button class="btn ok" onclick="move('${slug}','${id}','Ready for Review','Anything Alleato should know? (optional)')">&#10003; Mark complete, send for review</button>`);
@@ -486,9 +509,9 @@ async function renderItem(slug, id) {
       </div>
       ${plan && it.pin_x != null ? `<div class="sec"><h3>On the plan <a class="lnk" href="#/p/${slug}/plan/${id}">Open plan</a></h3>
         <a href="#/p/${slug}/plan/${id}" class="minimap" style="display:block"><img src="${plan.url}" alt="" style="object-position:${(it.pin_x * 100).toFixed(1)}% ${(it.pin_y * 100).toFixed(1)}%;object-fit:none;transform:scale(.55);transform-origin:center"><span class="pin" style="left:50%;top:50%;width:30px;height:38px">${pinSvg(it.number, STATUS_HEX[st])}</span></a></div>` : me.role === "admin" ? `<div class="sec"><h3>On the plan</h3><a class="btn sm" href="#/p/${slug}/plan/${id}">&#128205; Drop a pin so the sub can find it</a></div>` : ""}
-      ${it.notes && me.role !== "owner" ? `<div class="sec"><h3>Notes${me.role === "sub" ? " from Alleato" : ""}</h3><div class="notes">${esc(it.notes)}</div></div>` : ""}
+      ${it.notes && me.role !== "owner" ? `<div class="sec"><h3>Notes${subLike() ? " from Alleato" : ""}</h3><div class="notes">${esc(it.notes)}</div></div>` : ""}
       <div class="sec"><h3>Photos <span style="font-weight:500;text-transform:none;letter-spacing:0">${before.length} before &middot; ${after.length} after</span></h3>
-        ${photos.length ? `<div class="photos">${photoGrid(before, "before")}${photoGrid(after, "after")}</div>` : `<div class="empty" style="padding:10px">No photos yet.${me.role === "sub" ? " Add one of the finished work and the owner can accept it from their desk." : ""}</div>`}</div>
+        ${photos.length ? `<div class="photos">${photoGrid(before, "before")}${photoGrid(after, "after")}</div>` : `<div class="empty" style="padding:10px">No photos yet.${subLike() ? " Add one of the finished work and the owner can accept it from their desk." : ""}</div>`}</div>
       <div class="sec"><div class="actions">${A.join("")}</div></div>
       <div class="sec"><h3>History</h3><ul class="hist" id="hist"><li><span class="dot"></span><span class="meta">Loading</span></li></ul>
         <div style="margin-top:12px;display:flex;gap:8px"><input class="in" id="cmt" placeholder="Add a comment" onkeydown="if(event.key==='Enter')comment('${slug}','${id}')"><button class="btn sm ink" onclick="comment('${slug}','${id}')">Post</button></div></div>
@@ -557,7 +580,7 @@ function shrink(file, max = 1600, q = 0.82) {
 }
 function addPhotos(slug, id, kind) {
   const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*"; inp.multiple = true;
-  if (kind === "after" && S.me.role === "sub") inp.capture = "environment";
+  if (kind === "after" && subLike()) inp.capture = "environment";
   inp.onchange = async () => {
     const files = [...inp.files]; if (!files.length) return;
     let n = 0;
@@ -571,12 +594,12 @@ function addPhotos(slug, id, kind) {
 }
 
 function itemForm(b, it = {}) {
-  const subs = b.parties.filter((p) => p.role !== "owner");
+  const subs = b.parties.filter((p) => p.role !== "owner").slice().sort((a, c) => (a.role === "helper" ? 0 : a.role === "admin" ? 1 : 2) - (c.role === "helper" ? 0 : c.role === "admin" ? 1 : 2) || (a.company || "").localeCompare(c.company || ""));
   return `
     <div class="field"><label>What needs doing</label><textarea class="ta" id="f_title" style="min-height:60px">${esc(it.title || "")}</textarea></div>
     <div class="two"><div class="field"><label>Type</label><select class="in" id="f_type">${TYPES.map((t) => `<option ${it.type === t ? "selected" : ""}>${t}</option>`).join("")}</select></div>
       <div class="field"><label>Room / area</label><input class="in" id="f_area" value="${esc(it.area || "")}" placeholder="SALES FLOOR"></div></div>
-    <div class="two"><div class="field"><label>Responsible</label><select class="in" id="f_who"><option value="">Unassigned</option>${subs.map((p) => `<option value="${p.id}" ${it.assignee_id === p.id ? "selected" : ""}>${esc(p.company && p.role === "sub" ? p.company + " (" + p.name + ")" : p.name)}</option>`).join("")}</select></div>
+    <div class="two"><div class="field"><label>Responsible</label><select class="in" id="f_who"><option value="">Unassigned</option>${subs.map((p) => `<option value="${p.id}" ${it.assignee_id === p.id ? "selected" : ""}>${esc(p.role === "helper" ? p.name + " (in house)" : p.company && p.role === "sub" ? p.company + " (" + p.name + ")" : p.name)}</option>`).join("")}</select></div>
       <div class="field"><label>Due</label><input class="in" type="date" id="f_due" value="${esc(it.due_date || "")}"></div></div>
     <div class="two"><div class="field"><label>Trade</label><input class="in" id="f_trade" value="${esc(it.trade || "")}" placeholder="Electrical"></div>
       <div class="field"><label>Priority</label><select class="in" id="f_pri">${["Low", "Normal", "High"].map((p) => `<option ${(it.priority || "Normal") === p ? "selected" : ""}>${p}</option>`).join("")}</select></div></div>
@@ -628,6 +651,7 @@ async function renderPlan(slug, placeId) {
       </div></div>
       <div class="planctl"><button onclick="zoomPlan(1.4)">+</button><button onclick="zoomPlan(1/1.4)">&minus;</button><button onclick="fitPlan()" style="font-size:12px">fit</button></div>
     </div>
+    ${plan.note ? `<div class="sub" style="margin-top:8px">${esc(plan.name)}: ${esc(plan.note)}</div>` : ""}
     <div class="planlegend">${["Work Required", "Ready for Review", "Not Accepted", "Ready to Close", "Closed"].map((s) => `<span><i style="background:${STATUS_HEX[s]}"></i>${s}</span>`).join("")}<span><i style="background:${STATUS_HEX["Open"]}"></i>Open / unassigned</span></div>
     ${!placing && me.role === "admin" ? `<div class="sub" style="margin-top:8px">Open an item and tap "Pin on plan" to place it. ${b.items.filter((i) => i.pin_x == null && i.status !== "Closed").length} open items have no pin yet.</div>` : ""}
   `, { back: b.project.name, wide: true });
@@ -697,13 +721,19 @@ async function renderWork() {
   const byProj = {};
   for (const it of r.items) (byProj[it.projects.slug] ||= { p: it.projects, items: [] }).items.push(it);
   const todo = r.items.filter((i) => ["Open", "Work Required", "Not Accepted", "In Dispute"].includes(i.status)).length;
+  const today = new Date(new Date().toDateString()); const week = new Date(today.getTime() + 7 * 864e5);
+  const bucket = (i) => !i.due_date ? "later" : new Date(i.due_date + "T00:00") <= today ? "today" : new Date(i.due_date + "T00:00") < week ? "week" : "later";
+  const due = { today: r.items.filter((i) => bucket(i) === "today" && i.status !== "Closed"), week: r.items.filter((i) => bucket(i) === "week" && i.status !== "Closed") };
+  const sched = S.me.role === "helper" || due.today.length || due.week.length ? `<div class="card" style="padding:12px 14px;margin-bottom:6px"><b style="font-size:15px">Your schedule</b>
+      <div class="sub" style="margin-top:4px">${due.today.length ? `<b style="color:var(--flag)">Today / overdue:</b> ${[...new Set(due.today.map((i) => i.projects.name))].map((n) => `${esc(n)} (${due.today.filter((i) => i.projects.name === n).map((i) => "#" + i.number).join(", ")})`).join("; ")}` : "Nothing dated for today."}
+      ${due.week.length ? `<br><b>This week:</b> ${[...new Set(due.week.map((i) => i.projects.name))].map((n) => `${esc(n)} (${due.week.filter((i) => i.projects.name === n).map((i) => "#" + i.number + " " + fmtD(i.due_date)).join(", ")})`).join("; ")}` : ""}</div></div>` : "";
   const sections = Object.values(byProj).map(({ p, items }) => `
     <div class="group">${esc(p.name)} &middot; ${esc(p.address || "")}</div>
     <div class="card">${items.map((it) => `
       <a class="item ${it.plan_id ? "pinned" : ""}" href="#/p/${p.slug}/i/${it.id}"><div class="num">${it.number}</div>
         <div><div class="t">${esc(it.title)}</div><div class="m">${stChip(it.status)}${tyChip(it.type)}${it.area ? `<span>${esc(it.area)}</span>` : ""}${isOverdue(it) ? `<span style="color:var(--s-notacc);font-weight:700">overdue</span>` : it.due_date ? `<span>due ${fmtD(it.due_date)}</span>` : ""}</div></div></a>`).join("")}</div>`).join("");
   shell(`<div class="h"><div><h1>Your work</h1><div class="sub">${todo} item${todo === 1 ? "" : "s"} waiting on you. Finish it, photograph it, mark it complete. That is the whole job.</div></div></div>
-    ${sections || `<div class="empty">Nothing assigned to you right now.</div>`}
+    ${sched}${sections || `<div class="empty">Nothing assigned to you right now.</div>`}
     <div class="stack" style="margin-top:18px"><a class="bigbtn" href="#/process">How this works<small>What happens after you mark an item complete</small></a></div>`);
 }
 
@@ -713,7 +743,7 @@ async function renderPeople() {
   shell(loading(), { back: "Stores" });
   const b = await loadBoard(S.projects[0].slug, true);
   document.title = "People · Punchline";
-  const order = { admin: 0, owner: 1, sub: 2 };
+  const order = { admin: 0, helper: 1, owner: 2, sub: 3 };
   const people = b.parties.slice().sort((a, c) => order[a.role] - order[c.role] || (a.company || a.name).localeCompare(c.company || c.name));
   const cnt = (pid) => S.projects.reduce((n, p) => n + (S.boards[p.slug]?.items || []).filter((i) => i.assignee_id === pid && i.status !== "Closed").length, 0);
   shell(`
@@ -721,7 +751,7 @@ async function renderPeople() {
       <button class="btn sm ink" onclick="editPerson()">+ Person</button></div>
     <div class="card">${people.map((p) => `
       <div class="person"><div class="top"><div><div class="nm">${esc(p.name)}</div><div class="co">${esc(p.company || "")}${p.role === "sub" && cnt(p.id) ? ` &middot; ${cnt(p.id)} open` : ""}</div>
-        <div class="ct">${[p.email, p.phone].filter(Boolean).map(esc).join(" &middot; ")}</div></div><span class="role ${p.role}">${p.role === "admin" ? "Alleato" : p.role}</span></div>
+        <div class="ct">${[p.email, p.phone].filter(Boolean).map(esc).join(" &middot; ")}</div></div><span class="role ${p.role}">${p.role === "admin" ? "Alleato" : p.role === "helper" ? "Alleato field" : p.role}</span></div>
         <div class="lnk"><button class="btn sm" onclick="copy(linkFor('${esc(p.token)}'))">Copy link</button>
           ${p.email ? `<a class="btn sm" href="mailto:${esc(p.email)}?subject=${encodeURIComponent("Your Punchline link")}&body=${encodeURIComponent(`${p.name.split(" ")[0]},\n\nYour punch items for the Goodwill stores are here: ${linkFor(p.token)}\n\nOpen it on your phone. Finish an item, add a photo of the finished work, and tap Mark complete. The owner accepts it from the photo.\n\nRegards,\n${S.me.name}`)}">Email it</a>` : ""}
           ${p.phone ? `<a class="btn sm" href="sms:${esc(p.phone.replace(/[^\d+]/g, ""))}?&body=${encodeURIComponent(`Your Goodwill punch items: ${linkFor(p.token)}`)}">Text it</a>` : ""}
@@ -732,7 +762,7 @@ async function editPerson(id) {
   const b = S.boards[S.projects[0].slug]; const p = id ? b.parties.find((x) => x.id === id) : { role: "sub", project_ids: [] };
   const bg = sheet(`<h2>${id ? "Edit person" : "New person"}</h2>
     <div class="two"><div class="field"><label>Name</label><input class="in" id="p_name" value="${esc(p.name || "")}"></div><div class="field"><label>Company</label><input class="in" id="p_co" value="${esc(p.company || "")}"></div></div>
-    <div class="two"><div class="field"><label>Role</label><select class="in" id="p_role">${["sub", "owner", "admin"].map((r) => `<option value="${r}" ${p.role === r ? "selected" : ""}>${r === "admin" ? "Alleato (full access)" : r === "owner" ? "Owner (accepts work)" : "Subcontractor"}</option>`).join("")}</select></div>
+    <div class="two"><div class="field"><label>Role</label><select class="in" id="p_role">${["sub", "helper", "owner", "admin"].map((r) => `<option value="${r}" ${p.role === r ? "selected" : ""}>${r === "admin" ? "Alleato (full access)" : r === "owner" ? "Owner (accepts work)" : r === "helper" ? "Alleato field helper (works items like a sub)" : "Subcontractor"}</option>`).join("")}</select></div>
       <div class="field"><label>Phone</label><input class="in" id="p_phone" value="${esc(p.phone || "")}"></div></div>
     <div class="field"><label>Email</label><input class="in" id="p_email" value="${esc(p.email || "")}"></div>
     <div class="field"><label>Stores (owner only)</label>${S.projects.map((pr) => `<label style="display:inline-flex;gap:6px;align-items:center;margin:4px 12px 4px 0;text-transform:none;letter-spacing:0;font-weight:500;color:var(--ink)"><input type="checkbox" class="p_pr" value="${pr.id}" ${(p.project_ids || []).includes(pr.id) ? "checked" : ""}>${esc(pr.name)}</label>`).join("")}</div>
@@ -758,7 +788,8 @@ async function renderSignoff(slug) {
   shell(`
     <div class="tabs"><a href="#/p/${slug}">List</a><a href="#/p/${slug}/plan">Plan</a><a class="on" href="#/p/${slug}/signoff">Sign-off</a></div>
     <div class="h"><div><h1>${esc(b.project.name)} sign-off</h1><div class="sub">${open.length ? `${open.length} of ${items.length} items still open` : `All ${items.length} items closed`}</div></div>
-      <a class="btn sm" href="#/p/${slug}/print">Print the form</a></div>
+      <div class="btnrow"><a class="btn sm" href="#/p/${slug}/print">Sign-off form</a>${me.role !== "owner" ? `<button class="btn sm ink" onclick="packagePdf('${slug}')">Punch package PDF</button>` : ""}</div></div>
+    ${b.log.length ? `<div class="sub" style="margin:-6px 0 12px">${b.log.map((l) => `${l.action === "lock" ? "&#128274; Frozen" : "&#128275; Unlocked"} by ${esc(l.parties?.name || "")} ${fmtDT(l.created_at)}${l.note ? ": " + esc(l.note) : ""}`).join("<br>")}</div>` : ""}
     <div class="stack">
       <div class="card" style="padding:16px"><h2 style="font-size:17px">Substantial completion</h2><div class="sub" style="margin:4px 0 10px">The work is substantially complete and the owner can occupy and use it. Open items get finished by their due dates.</div>
         ${sub.map((s) => `<div class="chip type" style="margin:0 6px 6px 0">&#10003; ${esc(s.signer_name)} &middot; ${fmtD(s.signed_at)}</div>`).join("")}
@@ -797,7 +828,7 @@ async function renderPrint(slug) {
   const verDate = (i) => when(i, "Ready to Close") || (i.status === "Closed" ? when(i, "Closed") : "");
   const sub = b.signoffs.filter((s) => s.kind === "substantial").pop(), fin = b.signoffs.filter((s) => s.kind === "final").pop();
   const p = b.project;
-  const attendees = b.parties.filter((x) => x.role !== "sub");
+  const attendees = b.parties.filter((x) => x.role === "admin" || x.role === "owner");
   const rows = items.map((i) => `<tr><td>${i.number}</td><td>${esc(i.type)}</td><td>${esc(i.area || "")}</td><td>${esc(i.title)}</td><td>${esc(partyName(b, i.assignee_id))}</td><td>${esc(i.status)}</td><td>${doneDate(i) ? "&#10003; " + doneDate(i) : ""}</td><td>${verDate(i) ? "&#10003; " + verDate(i) : ""}</td><td>${i.status === "Closed" ? "&#10003; " + fmtD(i.closed_at) : ""}</td></tr>`).join("");
   shell(`
     <div class="noprint btnrow" style="margin-bottom:14px"><button class="btn ink" onclick="window.print()">Print / save as PDF</button><button class="btn" onclick="exportCsv('${slug}')">Download CSV</button></div>
@@ -823,6 +854,58 @@ async function renderPrint(slug) {
       <div class="foot">Alleato Group &nbsp;|&nbsp; 8383 Craig Street, Suite 150, Indianapolis, IN 46250 &nbsp;|&nbsp; www.alleatogroup.com &nbsp;&middot;&nbsp; Generated by Punchline with photo record on file for every closed item.</div>
     </div></div>`, { back: "Sign-off" });
 }
+async function loadImg(url) {
+  return new Promise((res, rej) => { const im = new Image(); im.crossOrigin = "anonymous"; im.onload = () => res(im); im.onerror = () => rej(new Error("plan image did not load")); im.src = url; });
+}
+async function packagePdf(slug) {
+  if (!window.jspdf) return toast("PDF library still loading, try again", true);
+  const b = S.boards[slug] || await loadBoard(slug, true);
+  const p = b.project; const items = b.items.filter((i) => i.status !== "Draft");
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "tabloid" });
+  const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 36;
+  const header = (sub) => { doc.setFont("helvetica", "bold"); doc.setFontSize(16); doc.setTextColor(0); doc.text(`PUNCH LIST  |  ${p.name}  |  Job ${p.job_no || ""}`, M, M + 4); doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.text(`${sub}   ${p.address || ""}   Generated ${new Date().toLocaleDateString("en-US")}${p.locked_at ? `   LIST FROZEN, agreed by ${p.locked_by} ${fmtD(p.locked_at)}` : "   (list not yet frozen)"}`, M, M + 20); doc.setDrawColor(0); doc.line(M, M + 26, W - M, M + 26); };
+  const footer = () => { const n = doc.internal.getNumberOfPages(); doc.setFontSize(8); doc.setTextColor(90); doc.text(`Punchline  |  Alleato Group  |  Page ${n}`, W - M, H - 14, { align: "right" }); doc.setTextColor(0); };
+  const hex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+  for (const plan of b.plans) {
+    try {
+      const im = await loadImg(plan.url);
+      header("Labeled plan: pins are item numbers");
+      const aw = W - 2 * M, ah = H - M - 40 - (M + 30);
+      const sc = Math.min(aw / im.width, ah / im.height); const dw = im.width * sc, dh = im.height * sc; const x0 = M + (aw - dw) / 2, y0 = M + 34;
+      doc.addImage(im, "PNG", x0, y0, dw, dh);
+      for (const it of items.filter((i) => i.plan_id === plan.id && i.pin_x != null)) {
+        const cx = x0 + it.pin_x * dw, cy = y0 + it.pin_y * dh; const col = hex(STATUS_HEX[it.status] || "#5B6470");
+        doc.setFillColor(...col); doc.setDrawColor(255); doc.setLineWidth(1); doc.circle(cx, cy, 10, "FD");
+        doc.setTextColor(255); doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.text(String(it.number), cx, cy + 3, { align: "center" }); doc.setTextColor(0);
+      }
+      const unpinned = items.filter((i) => !(i.plan_id === plan.id && i.pin_x != null));
+      doc.setFontSize(8); doc.setFont("helvetica", "normal"); doc.text((plan.note ? plan.note + "   " : "") + (unpinned.length ? `Not pinned: ${unpinned.map((i) => "#" + i.number).join(", ")}` : "All items pinned."), M, H - 30);
+      footer();
+    } catch (e) { toast(e.message, true); }
+    doc.addPage();
+  }
+  const cols = [["#", 26], ["Type", 52], ["Room / area", 120], ["Work to be performed", 420], ["Responsible", 130], ["Status", 90], ["Due", 50], ["Notes for the sub", W - 2 * M - 26 - 52 - 120 - 420 - 130 - 90 - 50]];
+  const table = (rows, title) => {
+    header(title); let y = M + 40;
+    const head = () => { doc.setFont("helvetica", "bold"); doc.setFontSize(8); let x = M; doc.setFillColor(230); doc.rect(M, y - 9, W - 2 * M, 14, "F"); for (const [n, w] of cols) { doc.text(n, x + 3, y); x += w; } y += 10; doc.setFont("helvetica", "normal"); };
+    head();
+    for (const it of rows) {
+      const cells = [String(it.number), it.type, it.area || "", it.title, partyFull(b, it.assignee_id) || "unassigned", it.status, it.due_date ? fmtD(it.due_date) : "", it.detail || ""];
+      const lines = cells.map((c, i) => doc.splitTextToSize(c, cols[i][1] - 6)); const h = Math.max(...lines.map((l) => l.length)) * 9 + 6;
+      if (y + h > H - 40) { footer(); doc.addPage(); header(title + " (continued)"); y = M + 40; head(); }
+      let x = M; doc.setDrawColor(180); doc.line(M, y - 7, W - M, y - 7);
+      lines.forEach((l, i) => { doc.text(l, x + 3, y + 2); x += cols[i][1]; }); y += h;
+    }
+    footer();
+  };
+  table(items, `All items (${items.length})`);
+  const who = [...new Set(items.map((i) => i.assignee_id).filter(Boolean))];
+  for (const id of who) { doc.addPage(); const mine = items.filter((i) => i.assignee_id === id); table(mine, `${partyFull(b, id)}: ${mine.length} item${mine.length === 1 ? "" : "s"}`); }
+  const un = items.filter((i) => !i.assignee_id); if (un.length) { doc.addPage(); table(un, `Unassigned: ${un.length}`); }
+  doc.save(`${p.name} punch package ${new Date().toISOString().slice(0, 10)}.pdf`);
+  toast("Package saved");
+}
 function exportCsv(slug) {
   const b = S.boards[slug];
   const cols = ["number", "type", "area", "title", "responsible", "status", "due_date", "trade", "photos", "closed_at", "notes"];
@@ -839,7 +922,8 @@ function renderProcess() {
     <div class="card" style="padding:4px 16px">
       <ol class="steps">
         <li><b>Walk it, pin it</b><p>Alleato walks the store with the owner and logs each item: what, where, which type (Punch, C/O, or Orig Scope - Gated), and drops a pin on the floor plan so anyone can find it without a phone call.</p></li>
-        <li><b>Send it to the sub</b><p>Each item is assigned to the responsible sub. The sub gets one link that shows only their items across every store, with the pin, the notes and any before photos.</p></li>
+        <li><b>Freeze the list with the owner</b><p>The owner reviews every item (with pins and photos) and taps "I agree to this list, freeze it". From then on nothing gets added without a recorded unlock (who, when, why). The punch package PDF (labeled plan, item table, one page per sub) comes straight out of the app for email or Bluebeam.</p></li>
+        <li><b>Send it to the sub, or to our field helper</b><p>Each item is assigned to the responsible sub, or in house to Alleato's field helper with a due date, so his phone shows "today at this store". Each person gets one link that shows only their items across every store, with the pin, the notes and any before photos.</p></li>
         <li><b>Sub does the work, photographs it</b><p>From their phone, on site: finish the item, take a photo of the finished work, tap Mark complete. No photo, no completion. Disputes get a note and go straight back to Alleato.</p></li>
         <li><b>Alleato verifies</b><p>Alleato checks the photo (or the site) and marks it verified, or sends it back to the sub with what is still missing. Every move is logged with who and when.</p></li>
         <li><b>Owner accepts from their desk</b><p>The owner opens their link, sees before and after side by side, and accepts or sends it back with a note. Accepting closes the item for good.</p></li>
@@ -852,7 +936,7 @@ function renderProcess() {
       <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:12px">${STATUSES.map((s) => `<tr style="border-top:1px solid var(--line)"><td style="padding:6px 0">${stChip(s)}</td><td style="padding:6px 8px;color:var(--muted)">${esc(PLAIN[s])}</td></tr>`).join("")}</table></div>
     <div class="card" style="padding:16px;margin-top:12px"><h2 style="font-size:16px">The three types</h2>
       <p style="font-size:14px;line-height:1.5;margin:8px 0 0"><b>Punch</b> ties directly to an originally contracted scope item: correcting or finishing contract work. <b>C/O</b> is not in the original scope, or an owner-requested change to contract work already done; it is priced before it is worked. <b>Orig Scope - Gated</b> is contracted scope still open because it is waiting on an owner action or material.</p></div>
-  `, { back: me.role === "sub" ? "Your work" : "Stores" });
+  `, { back: subLike() ? "Your work" : "Stores" });
 }
 
 boot();
