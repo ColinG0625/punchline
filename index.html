@@ -745,12 +745,12 @@ async function renderPlan(slug, placeId) {
   document.title = `${b.project.name} plan · Punchline`;
   const me = S.me;
   const plans = b.plans;
-  if (!plans.length) return shell(`<div class="tabs"><a href="#/p/${slug}">List</a><a class="on" href="#/p/${slug}/plan">Plan</a><a href="#/p/${slug}/signoff">Sign-off</a></div><div class="empty">No floor plan loaded for ${esc(b.project.name)} yet.</div>`, { back: b.project.name, wide: true });
+  if (!plans.length) return shell(`<div class="tabs"><a href="#/p/${slug}">List</a><a class="on" href="#/p/${slug}/plan">Plan</a>${S.me.role === "admin" || S.me.role === "helper" ? `<a href="#/p/${slug}/walk">Walk</a>` : ""}<a href="#/p/${slug}/signoff">Sign-off</a></div><div class="empty">No floor plan loaded for ${esc(b.project.name)} yet.</div>`, { back: b.project.name, wide: true });
   const plan = plans.find((p) => p.id === S.planId) || plans[0];
   const placing = placeId && me.role === "admin" ? b.items.find((i) => i.id === placeId) : null;
   const pins = b.items.filter((i) => i.plan_id === plan.id && i.pin_x != null && i.status !== "Draft" || (i.id === placeId && i.pin_x != null));
   shell(`
-    <div class="tabs noprint"><a href="#/p/${slug}">List</a><a class="on" href="#/p/${slug}/plan">Plan</a><a href="#/p/${slug}/signoff">Sign-off</a></div>
+    <div class="tabs noprint"><a href="#/p/${slug}">List</a><a class="on" href="#/p/${slug}/plan">Plan</a>${S.me.role === "admin" || S.me.role === "helper" ? `<a href="#/p/${slug}/walk">Walk</a>` : ""}<a href="#/p/${slug}/signoff">Sign-off</a></div>
     <div class="planwrap">
       ${placing ? `<div class="planhint">Tap the plan where #${placing.number} is<button onclick="go('#/p/${slug}/i/${placing.id}')">Done</button></div>` : ""}
       <div class="planscroll" id="ps"><div class="planstage" id="stage" style="width:${plan.width}px;height:${plan.height}px">
@@ -1015,7 +1015,7 @@ async function renderSignoff(slug) {
   const canSign = ["owner", "admin"].includes(me.role); const myLine = me.role === "owner" ? "owner" : "alleato";
   const sigLines = (arr) => ["owner", "alleato"].map((ln) => { const s = arr.find((x) => (x.line || "owner") === ln); return `<div class="chip type" style="margin:0 6px 6px 0">${s ? `&#10003; ${ln === "owner" ? "Owner" : "Alleato"}: ${esc(s.signer_name)} &middot; ${fmtD(s.signed_at)}` : `${ln === "owner" ? "Owner" : "Alleato"}: not signed`}</div>`; }).join("");
   shell(`
-    <div class="tabs"><a href="#/p/${slug}">List</a><a href="#/p/${slug}/plan">Plan</a><a class="on" href="#/p/${slug}/signoff">Sign-off</a></div>
+    <div class="tabs"><a href="#/p/${slug}">List</a><a href="#/p/${slug}/plan">Plan</a>${S.me.role === "admin" || S.me.role === "helper" ? `<a href="#/p/${slug}/walk">Walk</a>` : ""}<a class="on" href="#/p/${slug}/signoff">Sign-off</a></div>
     <div class="h"><div><h1>${esc(b.project.name)} sign-off</h1><div class="sub">${open.length ? `${open.length} of ${items.length} items still open` : `All ${items.length} items closed`}</div></div>
       <div class="btnrow"><a class="btn sm" href="#/p/${slug}/print">Sign-off form</a>${me.role !== "owner" ? `<button class="btn sm ink" onclick="packagePdf('${slug}')">Punch package PDF</button><button class="btn sm" onclick="jobplannerExport('${slug}')">JobPlanner export</button>` : ""}</div></div>
     ${b.log.length ? `<div class="sub" style="margin:-6px 0 12px">${b.log.map((l) => `${l.action === "lock" ? "&#128274; Frozen" : "&#128275; Unlocked"} by ${esc(l.parties?.name || "")} ${fmtDT(l.created_at)}${l.note ? ": " + esc(l.note) : ""}`).join("<br>")}</div>` : ""}
