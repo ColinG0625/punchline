@@ -254,7 +254,7 @@ textarea.ta{min-height:76px;resize:vertical}
 <script>
 // ---------- config ----------
 const API = "https://wwwtpeeywpdiazhwzwlr.supabase.co/functions/v1/api";
-const BUILD = "20261027-131706"; // stamped by tools/publish.py
+const BUILD = "20261027-134221"; // stamped by tools/publish.py
 const STATUSES = ["Draft","Open","Work Required","In Dispute","Ready for Review","Not Accepted","Ready to Close","Closed","Removed"];
 const JP_STATUS = {"Draft":0,"Open":0,"Work Required":0,"In Dispute":0,"Not Accepted":0,"Ready for Review":1,"Ready to Close":1,"Closed":2,"Removed":2};
 const JP_PROJECT = {};
@@ -267,6 +267,7 @@ const PLAIN = { // what each status means to the person reading it
 // Who holds the ball at each status. The one thing everyone should see at a glance.
 function ballInCourt(it, b) {
   const who = it.assignee_id ? partyName(b, it.assignee_id) : "nobody yet";
+  if (it.by_owner && !["Closed", "Removed", "Draft"].includes(it.status)) return "Owner: their vendor does it";
   switch (it.status) {
     case "Draft": return "Alleato: publish or drop";
     case "Open": return it.assignee_id ? "Alleato: send to " + who : "Alleato: assign it";
@@ -462,7 +463,7 @@ async function renderBoard(slug) {
       <div class="num">${it.number}</div>
       <div><div class="t">${esc(it.title)}</div>
         <div class="m">${stChip(it.status)}${tyChip(it.type)}${roomOf(it, b) ? `<span>${esc(roomOf(it, b))}</span>` : ""}${it.assignee_id ? `<span class="who">${esc(partyName(b, it.assignee_id))}</span>` : `<span style="color:var(--flag);font-weight:600">unassigned</span>`}${photoCount(it.id) ? `<span class="cam">&#128247; ${photoCount(it.id)}</span>` : ""}${isOverdue(it) ? `<span style="color:var(--s-notacc);font-weight:700">overdue ${fmtD(it.due_date)}</span>` : it.due_date ? `<span>due ${fmtD(it.due_date)}</span>` : ""}</div>
-        ${!["Closed", "Removed", "Draft"].includes(it.status) ? `<div class="m" style="margin-top:4px">${ballChip(it, b)}${it.walk_excluded ? `<span class="chip type" style="color:var(--s-notacc)">not in the walk</span>` : ""}</div>` : ""}
+        ${!["Closed", "Removed", "Draft"].includes(it.status) ? `<div class="m" style="margin-top:4px">${ballChip(it, b)}${it.by_owner ? `<span class="chip type gated">By owner</span>` : ""}${it.walk_excluded ? `<span class="chip type" style="color:var(--s-notacc)">not in the walk</span>` : ""}</div>` : ""}
       </div></a>`;
   let rows;
   if (byRoom) {
@@ -505,11 +506,12 @@ async function editStore(slug) {
     <div class="two">${f("st_addr", "Address", p.address)}${f("st_rep", "Owner's representative", p.owner_rep)}</div>
     <div class="two">${f("st_pm", "Alleato PM", p.alleato_pm)}${f("st_lead", "Alleato field lead", p.field_lead)}</div>
     ${f("st_notes", "Store notes (Alleato only)", p.notes)}
+    <div class="field"><label style="display:inline-flex;gap:8px;align-items:center;text-transform:none;letter-spacing:0"><input type="checkbox" id="st_esign" ${p.esign_enabled ? "checked" : ""}> Owner may draw a signature in the app (off = typed name only; ownership decides)</label></div>
     <div class="btnrow"><button class="btn" id="c">Cancel</button><button class="btn primary" id="s">Save</button></div>`);
   $("#c", bg).onclick = () => bg.remove();
   $("#s", bg).onclick = async () => {
     const v = (id) => $("#" + id, bg).value.trim();
-    try { await api("project_save", { id: p.id, walk_date: v("st_walk"), walk_attendees: v("st_att"), walk_note: v("st_wnote"), manager_name: v("st_mgr"), manager_phone: v("st_mph"), manager_note: v("st_mnote"), address: v("st_addr"), owner_rep: v("st_rep"), alleato_pm: v("st_pm"), field_lead: v("st_lead"), notes: v("st_notes") }); bg.remove(); await loadBoard(slug, true); render(); toast("Saved"); }
+    try { await api("project_save", { id: p.id, walk_date: v("st_walk"), walk_attendees: v("st_att"), walk_note: v("st_wnote"), manager_name: v("st_mgr"), manager_phone: v("st_mph"), manager_note: v("st_mnote"), address: v("st_addr"), owner_rep: v("st_rep"), alleato_pm: v("st_pm"), field_lead: v("st_lead"), notes: v("st_notes"), esign_enabled: $("#st_esign", bg).checked }); bg.remove(); await loadBoard(slug, true); render(); toast("Saved"); }
     catch (e) { toast(e.message, true); }
   };
 }
@@ -590,7 +592,7 @@ async function renderItem(slug, id) {
   }
   shell(`
     <div class="card detail">
-      <div class="head"><div class="row"><span class="num">#${it.number} &middot; ${esc(b.project.name.toUpperCase())}</span>${stChip(st)}${tyChip(it.type)}${it.priority === "High" ? `<span class="chip type co">High priority</span>` : ""}</div>
+      <div class="head"><div class="row"><span class="num">#${it.number} &middot; ${esc(b.project.name.toUpperCase())}</span>${stChip(st)}${tyChip(it.type)}${it.by_owner ? `<span class="chip type gated">By owner</span>` : ""}${it.priority === "High" ? `<span class="chip type co">High priority</span>` : ""}</div>
         <h1>${esc(it.title)}</h1>${it.detail ? `<div class="notes" style="margin-top:8px;color:var(--muted)">${esc(it.detail)}</div>` : ""}</div>
       <div class="facts">
         <div><small>Where</small>${esc(roomOf(it, b) || it.area || "See plan")}${it.walk_excluded ? ` <span class="chip type" style="color:var(--s-notacc)">not in the walk</span>` : ""}</div>
@@ -722,12 +724,13 @@ function itemForm(b, it = {}) {
       <div class="field"><label>Due</label><input class="in" type="date" id="f_due" value="${esc(it.due_date || "")}"></div></div>
     <div class="two"><div class="field"><label>Trade</label><input class="in" id="f_trade" value="${esc(it.trade || "")}" placeholder="Electrical"></div>
       <div class="field"><label>Priority</label><select class="in" id="f_pri">${["Low", "Normal", "High"].map((p) => `<option ${(it.priority || "Normal") === p ? "selected" : ""}>${p}</option>`).join("")}</select></div></div>
+    <div class="field"><label style="display:inline-flex;gap:8px;align-items:center;text-transform:none;letter-spacing:0"><input type="checkbox" id="f_byowner" ${it.by_owner ? "checked" : ""}> By owner (their vendor does it; ball stays with the owner; no sub link)</label></div>
     <div class="field"><label>Detail for the sub (they see this)</label><textarea class="ta" id="f_detail">${esc(it.detail || "")}</textarea></div>
     <div class="field"><label>Alleato notes (owner does not see)</label><textarea class="ta" id="f_notes">${esc(it.notes || "")}</textarea></div>`;
 }
 function readForm(bg) {
   return { title: $("#f_title", bg).value.trim(), type: $("#f_type", bg).value, area: $("#f_area", bg).value.trim(), assignee_id: $("#f_who", bg).value || null,
-    due_date: $("#f_due", bg).value || null, trade: $("#f_trade", bg).value.trim(), priority: $("#f_pri", bg).value, detail: $("#f_detail", bg).value.trim(), notes: $("#f_notes", bg).value.trim() };
+    due_date: $("#f_due", bg).value || null, trade: $("#f_trade", bg).value.trim(), priority: $("#f_pri", bg).value, detail: $("#f_detail", bg).value.trim(), notes: $("#f_notes", bg).value.trim(), by_owner: $("#f_byowner", bg).checked };
 }
 async function newItem(slug) {
   const b = await loadBoard(slug);
@@ -859,7 +862,18 @@ function readExif(buf) {
   } catch {}
   return {};
 }
-const W = { walk: null, pin: null, item: "", note: "" };
+const W = { walk: null, pin: null, item: "", note: "", transcript: "", rec: null };
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+function speakToggle() {
+  const btn = $("#wk_speak"); if (!SpeechRec) return toast("No speech on this phone; type the note.", true);
+  if (W.rec) { W.rec.stop(); return; }
+  const r = new SpeechRec(); r.lang = "en-US"; r.interimResults = true; r.continuous = true; W.rec = r;
+  let finalTxt = W.transcript || "";
+  r.onresult = (e) => { let interim = ""; for (let i = e.resultIndex; i < e.results.length; i++) { const t = e.results[i][0].transcript; if (e.results[i].isFinal) finalTxt += (finalTxt ? " " : "") + t.trim(); else interim += t; } W.transcript = finalTxt; const n = $("#wk_note"); if (n) { n.value = (finalTxt + " " + interim).trim(); W.note = n.value; } };
+  r.onend = () => { W.rec = null; if (btn) { btn.textContent = "\u{1F399} Speak"; btn.classList.remove("primary"); } };
+  r.onerror = () => { W.rec = null; toast("Speech stopped; type the note.", true); };
+  r.start(); if (btn) { btn.textContent = "\u25A0 Stop"; btn.classList.add("primary"); }
+}
 async function renderWalk(slug) {
   shell(loading(), { back: slug, wide: true });
   const b = await loadBoard(slug);
@@ -880,7 +894,7 @@ async function renderWalk(slug) {
       <div class="planctl"><button onclick="zoomPlan(1.4)">+</button><button onclick="zoomPlan(1/1.4)">&minus;</button><button onclick="fitPlan()" style="font-size:12px">fit</button></div></div>` : `<div class="empty">No plan for this store; shots will be saved without a pin.</div>`}
     <div class="card" style="padding:14px;margin-top:10px">
       <div class="field"><label>For an existing item (optional)</label><select class="in" id="wk_item" onchange="W.item=this.value"><option value="">New walk shot (not an item yet)</option>${openItems.map((i) => `<option value="${i.id}" ${W.item === i.id ? "selected" : ""}>#${i.number} ${esc(i.title.slice(0, 60))}</option>`).join("")}</select></div>
-      <div class="field"><label>One-line note (optional)</label><input class="in" id="wk_note" value="${esc(W.note)}" oninput="W.note=this.value" placeholder="What you see"></div>
+      <div class="field"><label>Say it or type it (optional)</label><div style="display:flex;gap:8px"><input class="in" id="wk_note" value="${esc(W.note)}" oninput="W.note=this.value" placeholder="What you see"><button class="btn" type="button" id="wk_speak" onclick="speakToggle()" title="${SpeechRec ? "Speech to text" : "No speech on this phone"}">&#127897; Speak</button></div></div>
       <button class="btn primary" style="width:100%;font-size:17px;min-height:56px" onclick="walkShoot('${slug}')">&#128247; Shoot ${W.pin ? "" : "(no pin yet)"}</button>
       <div class="sub" id="wk_status" style="margin-top:8px">${W.walk.shots_done ? `${W.walk.shots_done} shot${W.walk.shots_done === 1 ? "" : "s"} this walk` : ""}</div>
     </div>`, { back: b.project.name, wide: true });
@@ -902,10 +916,11 @@ function walkShoot(slug) {
     let original = null; if (buf.byteLength <= 12_000_000) { const b64 = btoa(new Uint8Array(buf).reduce((a, c) => a + String.fromCharCode(c), "")); original = b64; }
     if (st) st.textContent = "Uploading";
     try {
-      const r = await api("walk_shot", { walk_id: W.walk.id, item_id: W.item || null, plan_id: W.pin?.plan_id || null, pin_x: W.pin?.x ?? null, pin_y: W.pin?.y ?? null, room: W.pin?.room || null, note: W.note,
+      const r = await api("walk_shot", { walk_id: W.walk.id, item_id: W.item || null, plan_id: W.pin?.plan_id || null, pin_x: W.pin?.x ?? null, pin_y: W.pin?.y ?? null, room: W.pin?.room || null, note: W.note, transcript: W.transcript || null,
         shot_at: exif.takenIso || new Date(f.lastModified || Date.now()).toISOString(), lat: exif.lat ?? gps?.lat ?? null, lng: exif.lng ?? gps?.lng ?? null, exif: { ...exif, phone_gps: gps, file: f.name, bytes: buf.byteLength, type: f.type }, data: display, original, original_type: f.type || "image/jpeg" });
-      W.walk.shots_done = (W.walk.shots_done || 0) + 1; W.note = ""; toast(`Shot ${W.walk.shots_done} saved${r.shot.room ? " in " + r.shot.room : ""}${exif.lat != null ? " (GPS from photo)" : gps ? " (phone GPS)" : ""}`);
+      W.walk.shots_done = (W.walk.shots_done || 0) + 1; const hadWords = !!(W.transcript || W.note); W.note = ""; W.transcript = ""; toast(`Shot ${W.walk.shots_done} saved${r.shot.room ? " in " + r.shot.room : ""}${exif.lat != null ? " (GPS from photo)" : gps ? " (phone GPS)" : ""}`);
       renderWalk(slug);
+      if (hadWords && !W.item) api("walk_candidate", { shot_id: r.shot.id }).then((c) => toast(`Suggested: ${c.candidate.suggested_title} (${c.candidate.suggested_type})`)).catch(() => {});
     } catch (e) { toast(e.message, true); if (st) st.textContent = "Not saved: " + e.message; }
   };
   inp.click();
@@ -931,9 +946,15 @@ async function renderWalkReview(slug, walkId) {
         <a href="${sh.original_url || sh.url}" target="_blank" rel="noopener"><img src="${sh.url}" style="width:96px;height:96px;object-fit:cover;border-radius:8px" alt=""></a>
         <div><div style="font-weight:600">${esc(sh.note || "(no note)")}</div>
           <div class="sub">${fmtDT(sh.shot_at)} &middot; ${esc(sh.parties?.name || "")}${sh.lat != null ? ` &middot; GPS ${sh.lat.toFixed(5)}, ${sh.lng.toFixed(5)}` : " &middot; no GPS"}${sh.original_path ? " &middot; original kept" : " &middot; display copy only"}</div>
-          ${sh.item_id && itemOf(sh.item_id) ? `<div class="sub">For <a href="#/p/${slug}/i/${sh.item_id}">#${itemOf(sh.item_id).number} ${esc(itemOf(sh.item_id).title.slice(0, 50))}</a></div>` : sh.converted_item_id ? `<div class="sub">Now item <a href="#/p/${slug}/i/${sh.converted_item_id}">#${itemOf(sh.converted_item_id)?.number ?? ""}</a></div>` : S.me.role === "admin" ? `<button class="btn sm ink" style="margin-top:6px" onclick="shotToItem('${slug}','${sh.id}','${walkId}')">Make it an item</button>` : ""}
+          ${sh.transcript ? `<div class="sub" style="font-style:italic">"${esc(sh.transcript)}"</div>` : ""}
+          ${sh.candidate && sh.candidate.status === "new" && !sh.converted_item_id ? `<div class="card" style="padding:8px 10px;margin-top:6px;border-color:var(--flag)"><div style="font-size:12px;color:var(--muted)">AI suggestion ${sh.candidate.confidence != null ? Math.round(sh.candidate.confidence * 100) + "%" : ""}</div><b>${esc(sh.candidate.suggested_title || "")}</b> ${tyChip(sh.candidate.suggested_type || "Punch")}${sh.candidate.suggested_trade ? ` <span class="sub">${esc(sh.candidate.suggested_trade)}</span>` : ""}
+            ${S.me.role === "admin" ? `<div class="btnrow" style="margin-top:6px"><button class="btn sm ok" onclick="acceptCandidate('${slug}','${sh.id}','${walkId}','${esc(sh.candidate.suggested_title || "")}','${esc(sh.candidate.suggested_type || "Punch")}')">Accept</button><button class="btn sm" onclick="shotToItem('${slug}','${sh.id}','${walkId}')">Edit &amp; create</button><button class="btn sm ghost" onclick="discardCandidate('${sh.candidate.id}','${slug}','${walkId}')">Discard</button></div>` : ""}</div>` : ""}
+          ${sh.item_id && itemOf(sh.item_id) ? `<div class="sub">For <a href="#/p/${slug}/i/${sh.item_id}">#${itemOf(sh.item_id).number} ${esc(itemOf(sh.item_id).title.slice(0, 50))}</a></div>` : sh.converted_item_id ? `<div class="sub">Now item <a href="#/p/${slug}/i/${sh.converted_item_id}">#${itemOf(sh.converted_item_id)?.number ?? ""}</a></div>` : S.me.role === "admin" ? `<div class="btnrow" style="margin-top:6px"><button class="btn sm ink" onclick="shotToItem('${slug}','${sh.id}','${walkId}')">Make it an item</button>${r.ai && !sh.candidate ? `<button class="btn sm" onclick="suggest('${slug}','${sh.id}','${walkId}')">Suggest with AI</button>` : ""}</div>` : ""}
         </div></div>`).join("")}</div>`).join("") || `<div class="empty">No shots on this walk.</div>`}`, { back: "Walks" });
 }
+async function suggest(slug, shotId, walkId) { try { const c = await api("walk_candidate", { shot_id: shotId }); toast(`${c.calls_used_today} of ${c.limit} AI calls used today`); renderWalkReview(slug, walkId); } catch (e) { toast(e.message, true); } }
+async function acceptCandidate(slug, shotId, walkId, title, type) { try { const r = await api("walk_to_item", { shot_id: shotId, title, type }); toast(`#${r.item.number} created as Draft`); await loadBoard(slug, true); renderWalkReview(slug, walkId); } catch (e) { toast(e.message, true); } }
+async function discardCandidate(cid, slug, walkId) { try { await api("candidate_discard", { candidate_id: cid }); renderWalkReview(slug, walkId); } catch (e) { toast(e.message, true); } }
 async function shotToItem(slug, shotId, walkId) {
   const title = await ask("Item title (what needs doing)", "", true, "Create item"); if (title === null) return;
   try { const r = await api("walk_to_item", { shot_id: shotId, title }); toast(`#${r.item.number} created as Draft`); await loadBoard(slug, true); renderWalkReview(slug, walkId); } catch (e) { toast(e.message, true); }
@@ -1037,7 +1058,10 @@ async function renderSignoff(slug) {
       <div class="card" style="padding:16px"><h2 style="font-size:17px">Final acceptance</h2><div class="sub" style="margin:4px 0 10px">Every item closed and verified. The owner accepts the work as complete per the contract.${open.length ? ` <b>Not yet: ${open.length} open.</b>` : ""}</div>
         ${sigLines(fin)}
         ${canSign && !fin.some((s) => s.line === myLine) ? `<div><button class="btn ${open.length ? "" : "ok"}" ${open.length ? "disabled" : ""} onclick="sign('${slug}','final')">Sign the ${myLine === "owner" ? "owner's" : "Alleato"} line as ${esc(me.name)}</button></div>` : ""}
-        ${me.role === "admin" ? `<div class="sub" style="margin-top:6px">Final acceptance is the owner's. Alleato signs only its own line.</div>` : ""}</div>
+        ${me.role === "admin" ? `<div class="sub" style="margin-top:6px">Final acceptance is the owner's. Alleato signs only its own line. Drawn signature for the owner: ${b.project.esign_enabled ? "ON" : "OFF"} (Store details).</div>` : ""}</div>
+      ${me.role === "admin" ? `<div class="card" style="padding:16px"><h2 style="font-size:17px">Filed in JobPlanner</h2><div class="sub" style="margin:4px 0 10px">The JobPlanner record is the package PDF and the CSV, filed in the store's JobPlanner project by an Alleato person. Record it here; it prints on the form.</div>
+        ${(b.filings || []).map((f) => `<div class="chip type" style="margin:0 6px 6px 0">&#10003; ${esc(f.parties?.name || "")} &middot; ${fmtD(f.filed_at)} &middot; ${esc(f.what)}</div>`).join("")}
+        <div><button class="btn" onclick="jpFiled('${slug}')">Record a filing</button></div></div>` : ""}
       <div class="card"><div class="sec"><h3>Line items</h3>
         <div class="tw"><table style="width:100%;border-collapse:collapse;font-size:13px">
           <tr style="color:var(--muted);text-align:left"><th style="padding:4px">#</th><th>Type</th><th>Item</th><th>Status</th></tr>
@@ -1045,15 +1069,40 @@ async function renderSignoff(slug) {
         </table></div></div></div>
     </div>`, { back: b.project.name });
 }
+async function jpFiled(slug) {
+  const b = S.boards[slug];
+  const bg = sheet(`<h2>Filed in JobPlanner &middot; ${esc(b.project.name)}</h2>
+    <div class="field"><label>What was filed</label><select class="in" id="jf_what"><option>Package PDF + item CSV</option><option>Package PDF</option><option>Item CSV</option><option>Sign-off form</option></select></div>
+    <div class="field"><label>Note (where in JobPlanner, optional)</label><input class="in" id="jf_note"></div>
+    <div class="btnrow"><button class="btn" id="c">Cancel</button><button class="btn ink" id="s">Record</button></div>`);
+  $("#c", bg).onclick = () => bg.remove();
+  $("#s", bg).onclick = async () => { try { await api("jp_filed", { project_id: b.project.id, what: $("#jf_what", bg).value, note: $("#jf_note", bg).value.trim(), package_version: BUILD }); bg.remove(); toast("Recorded"); await loadBoard(slug, true); render(); } catch (e) { toast(e.message, true); } };
+}
 async function sign(slug, kind) {
   const b = S.boards[slug];
+  const pad = S.me.role === "owner" && b.project.esign_enabled;
   const bg = sheet(`<h2>${kind === "final" ? "Final acceptance" : "Substantial completion"} &middot; ${esc(b.project.name)} &middot; ${S.me.role === "owner" ? "owner's line" : "Alleato line"}</h2>
     <p style="font-size:14px;color:var(--muted);margin:0 0 12px">${kind === "final" ? "All items on the punch list are complete and verified. The owner accepts the work as complete per the contract." : "The work is substantially complete and the owner can occupy and use it for its intended purpose. Open items will be completed by the responsible parties by their due dates."}</p>
     <div class="field"><label>Type your full name to sign</label><input class="in" id="sg_name" value="${esc(S.me.name)}"></div>
     <div class="field"><label>Note (optional)</label><input class="in" id="sg_note"></div>
+    ${pad ? `<div class="field"><label>Draw your signature</label><canvas id="sg_pad" width="560" height="180" style="width:100%;height:150px;border:1px solid var(--line);border-radius:10px;background:#fff;touch-action:none"></canvas><button class="btn sm ghost" id="sg_clear" type="button">Clear</button></div>` : ""}
     <div class="btnrow"><button class="btn" id="c">Cancel</button><button class="btn ok" id="s">Sign</button></div>`);
+  let drawn = false;
+  if (pad) {
+    const cv = $("#sg_pad", bg), ctx = cv.getContext("2d"); ctx.lineWidth = 3; ctx.lineCap = "round"; ctx.strokeStyle = "#111"; let down = false;
+    const pos = (e) => { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) * cv.width / r.width, (e.clientY - r.top) * cv.height / r.height]; };
+    cv.addEventListener("pointerdown", (e) => { down = true; drawn = true; const [x, y] = pos(e); ctx.beginPath(); ctx.moveTo(x, y); });
+    cv.addEventListener("pointermove", (e) => { if (!down) return; const [x, y] = pos(e); ctx.lineTo(x, y); ctx.stroke(); });
+    ["pointerup", "pointerleave", "pointercancel"].forEach((t) => cv.addEventListener(t, () => { down = false; }));
+    $("#sg_clear", bg).onclick = () => { ctx.clearRect(0, 0, cv.width, cv.height); drawn = false; };
+  }
   $("#c", bg).onclick = () => bg.remove();
-  $("#s", bg).onclick = async () => { try { await api("signoff", { project_id: b.project.id, kind, name: $("#sg_name", bg).value, note: $("#sg_note", bg).value }); bg.remove(); toast("Signed"); renderSignoff(slug); } catch (e) { toast(e.message, true); } };
+  $("#s", bg).onclick = async () => {
+    const args = { project_id: b.project.id, kind, name: $("#sg_name", bg).value, note: $("#sg_note", bg).value };
+    if (pad && drawn) args.signature = $("#sg_pad", bg).toDataURL("image/png");
+    if (pad && !drawn && !confirm("No signature drawn. Sign with your typed name only?")) return;
+    try { await api("signoff", args); bg.remove(); toast("Signed"); renderSignoff(slug); } catch (e) { toast(e.message, true); }
+  };
 }
 
 // ---------- print (the sign-off form, from live data) ----------
@@ -1069,8 +1118,11 @@ async function renderPrint(slug) {
   const verDate = (i) => when(i, "Ready to Close") || (i.status === "Closed" ? when(i, "Closed") : "");
   const so = (kind, line) => b.signoffs.find((s) => s.kind === kind && (s.line || "owner") === line);
   const p = b.project;
+  const wet = (label) => `<div style="margin-top:28px;border-top:1px solid #000;padding-top:3px">Signature</div><div style="display:flex;gap:18px;margin-top:14px"><div style="flex:1;border-top:1px solid #000;padding-top:3px">Printed name</div><div style="width:110px;border-top:1px solid #000;padding-top:3px">Date</div></div>`;
+  const sigCell = (kind, line, label) => { const x = so(kind, line); return `<div><b>${label}</b><br>${x ? `${x.signature_url ? `<img src="${x.signature_url}" alt="signature" style="max-height:60px;display:block;margin:6px 0">` : ""}${x.signature_url ? "Signed" : "Typed"} in Punchline by ${esc(x.signer_name)} on ${fmtD(x.signed_at)}` : ""}${wet()}</div>`; };
+  const sigBlock = (kind) => `<div class="sig" style="border-top:0"><div style="border-top:0">${sigCell(kind, "owner", "Owner's representative")}</div><div style="border-top:0">${sigCell(kind, "alleato", "Alleato Group")}</div></div>`;
   const attendees = b.parties.filter((x) => x.role === "admin" || x.role === "owner");
-  const rows = items.filter((i) => i.status !== "Removed").map((i) => `<tr><td>${i.number}</td><td>${esc(i.type)}</td><td>${esc(i.area || "")}</td><td>${esc(i.title)}</td><td>${esc(partyName(b, i.assignee_id))}</td><td>${esc(i.status)}</td><td>${doneDate(i) ? "&#10003; " + doneDate(i) : ""}</td><td>${verDate(i) ? "&#10003; " + verDate(i) : ""}</td><td>${i.status === "Closed" ? "&#10003; " + fmtD(i.closed_at) : ""}</td></tr>`).join("");
+  const rows = items.filter((i) => i.status !== "Removed").map((i) => `<tr><td>${i.number}</td><td><b>${esc(i.type.toUpperCase())}</b></td><td>${esc(roomOf(i, b) || i.area || "")}</td><td>${esc(i.title)}${i.by_owner ? " <b>[BY OWNER]</b>" : ""}</td><td>${i.by_owner ? "Goodwill's vendor (by owner)" : esc(partyName(b, i.assignee_id))}</td><td>${esc(i.status)}</td><td>${doneDate(i) ? "&#10003; " + doneDate(i) : ""}</td><td>${verDate(i) ? "&#10003; " + verDate(i) : ""}</td><td>${i.status === "Closed" ? "&#10003; " + fmtD(i.closed_at) : ""}</td></tr>`).join("");
   shell(`
     <div class="noprint btnrow" style="margin-bottom:14px"><button class="btn ink" onclick="window.print()">Print / save as PDF</button><button class="btn" onclick="exportCsv('${slug}')">Download CSV</button></div>
     <div class="screen-doc"><div class="doc">
@@ -1085,10 +1137,11 @@ async function renderPrint(slug) {
       <table><tr><th>Name</th><th>Company</th><th>Role</th><th>Phone / email</th></tr>${attendees.map((a) => `<tr><td>${esc(a.name)}</td><td>${esc(a.company || "")}</td><td>${a.role === "owner" ? "Owner's Representative" : "Alleato Group"}</td><td>${esc([a.phone, a.email].filter(Boolean).join(" / "))}</td></tr>`).join("")}</table>
       <h2>Substantial completion</h2>
       <div class="box">The undersigned agree the work is substantially complete and the owner can occupy and use it for its intended purpose. All open items on the attached punch list will be completed by the responsible parties by their due dates.</div>
-      <div class="sig"><div><b>Owner's representative</b><br>${so("substantial", "owner") ? `Signed electronically in Punchline by ${esc(so("substantial", "owner").signer_name)} on ${fmtD(so("substantial", "owner").signed_at)}` : "Signature / printed name / date"}</div><div><b>Alleato Group</b><br>${so("substantial", "alleato") ? `Signed electronically in Punchline by ${esc(so("substantial", "alleato").signer_name)} on ${fmtD(so("substantial", "alleato").signed_at)}` : "Signature / printed name / date"}</div></div>
+      ${sigBlock("substantial")}
       <h2>Final acceptance</h2>
       <div class="box">All items on the attached punch list are complete and verified by Alleato, and all closeout deliverables have been received. The owner accepts the work as complete per the contract.</div>
-      <div class="sig"><div><b>Owner's representative</b><br>${so("final", "owner") ? `Signed electronically in Punchline by ${esc(so("final", "owner").signer_name)} on ${fmtD(so("final", "owner").signed_at)}` : "Signature / printed name / date"}</div><div><b>Alleato Group</b><br>${so("final", "alleato") ? `Signed electronically in Punchline by ${esc(so("final", "alleato").signer_name)} on ${fmtD(so("final", "alleato").signed_at)}` : "Signature / printed name / date"}</div></div>
+      ${sigBlock("final")}
+      ${b.filings && b.filings.length ? `<h2>JobPlanner record</h2><div class="box">${b.filings.map((f) => `Filed in JobPlanner by ${esc(f.parties?.name || "")} on ${fmtD(f.filed_at)}: ${esc(f.what)}${f.package_version ? " (package build " + esc(f.package_version) + ")" : ""}${f.note ? ". " + esc(f.note) : ""}`).join("<br>")}</div>` : ""}
       <div class="pg"></div>
       <h2>Punch list - line items</h2>
       <p style="font-size:9pt">Punch = ties directly to an originally contracted scope item. C/O = not in the original scope, or an owner-requested change to completed contract work. Orig Scope - Gated = contracted scope still open, waiting on owner action or material. Done = sub marked complete with photo. Verified = Alleato verified. Owner = owner accepted in Punchline.</p>
@@ -1141,13 +1194,13 @@ async function packagePdf(slug) {
     const head = () => { doc.setFont("helvetica", "bold"); doc.setFontSize(8); let x = M; doc.setFillColor(230); doc.rect(M, y - 9, W - 2 * M, 14, "F"); for (const [n, w] of cols) { doc.text(n, x + 3, y); x += w; } y += 10; doc.setFont("helvetica", "normal"); };
     head();
     for (const it of rows) {
-      const cells = [String(it.number), it.type, roomOf(it, b) || "", it.title + (it.walk_excluded ? " (not in the walk)" : ""), partyFull(b, it.assignee_id) || "unassigned", it.status, it.due_date ? fmtD(it.due_date) : "", it.detail || ""];
+      const cells = [String(it.number), it.type.toUpperCase(), roomOf(it, b) || "", it.title + (it.walk_excluded ? " (not in the walk)" : "") + (it.by_owner ? " [BY OWNER]" : ""), it.by_owner ? "Goodwill's vendor (by owner)" : (partyFull(b, it.assignee_id) || "unassigned"), it.status, it.due_date ? fmtD(it.due_date) : "", it.detail || ""];
       const lines = cells.map((c, i) => doc.splitTextToSize(c, cols[i][1] - 6));
       const th = thumbs[it.id].length ? TH + 6 : 0;
       const h = Math.max(Math.max(...lines.map((l) => l.length)) * 9 + 6, th);
       if (y + h > H - 40) { footer(); doc.addPage(); header(title + " (continued)"); y = M + 40; head(); }
       let x = M; doc.setDrawColor(180); doc.line(M, y - 7, W - M, y - 7);
-      lines.forEach((l, i) => { doc.text(l, x + 3, y + 2); x += cols[i][1]; });
+      lines.forEach((l, i) => { if (i === 1) doc.setFont("helvetica", "bold"); doc.text(l, x + 3, y + 2); if (i === 1) doc.setFont("helvetica", "normal"); x += cols[i][1]; });
       let tx = x + 3; for (const im of thumbs[it.id]) { const sc = TH / Math.max(im.width, im.height); try { doc.addImage(im, "JPEG", tx, y - 5, im.width * sc, im.height * sc); } catch {} tx += im.width * sc + 4; }
       y += h;
     }
@@ -1162,8 +1215,8 @@ async function packagePdf(slug) {
 }
 function exportCsv(slug) {
   const b = S.boards[slug];
-  const cols = ["number", "type", "area", "title", "responsible", "status", "ball_in_court", "due_date", "overdue", "last_notified", "trade", "photos", "closed_at", "notes"];
-  const lines = [cols.join(",")].concat(b.items.map((i) => cols.map((c) => { let v = c === "responsible" ? partyFull(b, i.assignee_id) : c === "ball_in_court" ? ballInCourt(i, b) : c === "overdue" ? (isOverdue(i) ? "yes" : "") : c === "last_notified" ? (i.last_notified_at ? `${fmtD(i.last_notified_at)} ${i.last_notified_how}` : "") : c === "photos" ? b.photos.filter((p) => p.item_id === i.id && !p.removed_at).length : i[c] ?? ""; return `"${String(v).replace(/"/g, '""')}"`; }).join(",")));
+  const cols = ["type", "number", "area", "title", "responsible", "by_owner", "status", "ball_in_court", "due_date", "overdue", "last_notified", "trade", "photos", "closed_at", "notes"];
+  const lines = [cols.join(",")].concat(b.items.map((i) => cols.map((c) => { let v = c === "responsible" ? partyFull(b, i.assignee_id) : c === "by_owner" ? (i.by_owner ? "yes" : "") : c === "ball_in_court" ? ballInCourt(i, b) : c === "overdue" ? (isOverdue(i) ? "yes" : "") : c === "last_notified" ? (i.last_notified_at ? `${fmtD(i.last_notified_at)} ${i.last_notified_how}` : "") : c === "photos" ? b.photos.filter((p) => p.item_id === i.id && !p.removed_at).length : i[c] ?? ""; return `"${String(v).replace(/"/g, '""')}"`; }).join(",")));
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" })); a.download = `${b.project.name}-punch-${new Date().toISOString().slice(0, 10)}.csv`; a.click();
 }
 
@@ -1175,9 +1228,23 @@ async function renderPage(name, title) {
   shell(loading(), { back });
   try {
     if (!pageCache[name]) { const r = await fetch(`pages/${name}.html`, { cache: "no-cache" }); if (!r.ok) throw new Error("page not published"); pageCache[name] = await r.text(); }
-    shell(`<style>.pl-how,.pl-ben{font-family:inherit;--ink:var(--ink);--accent:var(--flag);--soft:var(--soft);--line:var(--line);--muted:var(--muted);padding:0}.pl-how ol.steps li,.pl-ben .stat,.pl-ben table{background:var(--card)}.pl-how ol.steps li{display:block}.pl-how ol.steps p{color:var(--ink)}</style>${pageCache[name]}
-      ${name === "how-punch-works" ? statusTable() : ""}`, { back });
+    shell(`<style>.pl-how,.pl-ben{font-family:inherit;--ink:var(--ink);--accent:var(--flag);--soft:var(--soft);--line:var(--line);--muted:var(--muted);padding:0}.pl-how ol.steps li,.pl-ben .stat,.pl-ben table{background:var(--card)}.pl-how ol.steps li{display:block}.pl-how ol.steps p{color:var(--ink)}.pl-ben .stat::before{content:"Goal";display:inline-block;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:1px 6px;margin-bottom:6px}</style>${pageCache[name]}
+      ${name === "how-punch-works" ? statusTable() : ""}${name === "benefits" ? `<div class="card" style="padding:16px;margin-top:14px" id="measured"><h2 style="font-size:16px">Measured so far</h2><div class="sub">Counted live from the record, test store excluded.</div><div class="loading"><div class="spin"></div></div></div>` : ""}`, { back });
+    if (name === "benefits") loadMeasured();
   } catch (e) { if (name === "how-punch-works") return renderProcess(); shell(`<div class="empty">${esc(e.message)}</div>`, { back }); }
+}
+async function loadMeasured() {
+  const el = $("#measured"); if (!el) return;
+  try {
+    const m = await api("metrics");
+    const tile = (n, label, note) => `<div class="card" style="padding:12px"><b style="font-size:24px;display:block;line-height:1.1;color:${n === null || n === 0 ? "var(--muted)" : "var(--flag)"}">${n === null ? "no data yet" : n}</b><div style="font-size:13px;margin-top:4px">${label}</div>${note ? `<div class="sub" style="font-size:12px">${note}</div>` : ""}</div>`;
+    el.innerHTML = `<h2 style="font-size:16px">Measured so far</h2><div class="sub" style="margin-bottom:10px">Counted live from the record, test store excluded.</div><div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">
+      ${tile(m.items_closed, "items closed", m.items_open + " still open")}
+      ${tile(m.median_days_to_close, "median days, assigned to closed", m.median_days_to_close === null ? "needs closed items" : "")}
+      ${tile(m.owner_accepted_in_app, "accepted by the owner in the app", "")}
+      ${tile(m.photos_on_record, "photos on record", "")}
+      ${tile(m.walks, "walks", m.shots + " shots")}</div>`;
+  } catch (e) { el.innerHTML = `<h2 style="font-size:16px">Measured so far</h2><div class="sub">${esc(e.message)}</div>`; }
 }
 function statusTable() {
   return `<div class="card" style="padding:16px;margin-top:14px"><h2 style="font-size:16px">Status words in the app</h2>
@@ -1193,7 +1260,7 @@ function jobplannerExport(slug) {
   const bic = (it) => { const s = it.status; if (["Work Required", "Not Accepted", "Open"].includes(s)) return party(it.assignee_id); if (["Ready for Review", "In Dispute"].includes(s)) return { contactName: p.field_lead || "Alleato", companyName: "Alleato Group", email: "" }; if (s === "Ready to Close") return { contactName: p.owner_rep || "Owner", companyName: p.owner_name || "", email: "" }; return null; };
   const ph = (id, kind) => b.photos.filter((x) => x.item_id === id && x.kind === kind && !x.removed_at).map((x) => ({ url: x.url, takenOn: x.created_at, note: "signed link, valid 6 h from export; re-export for fresh links" }));
   const records = items.map((it) => ({
-    itemNumber: String(it.number).padStart(3, "0"), title: it.title, category: it.type, location: it.area || "", locationId: 0,
+    itemNumber: String(it.number).padStart(3, "0"), title: `[${it.type.toUpperCase()}] ${it.title}`, category: it.type, location: it.area || "", locationId: 0,
     dueDate: it.due_date ? it.due_date + "T12:00:00.000Z" : null, priority: prio[it.priority] ?? 1, groups: it.trade ? [{ groupName: it.trade }] : [],
     assignedTo: party(it.assignee_id), status: JP_STATUS[it.status] ?? 0,
     notes: [it.detail, it.plan_id && it.pin_x != null ? `Pin: plan x ${it.pin_x} y ${it.pin_y} (see Punchline)` : "", it.status === "Removed" ? "REMOVED from the list (see Punchline history)" : "", `Punchline #${it.number}`].filter(Boolean).join(" | "),
@@ -1204,8 +1271,8 @@ function jobplannerExport(slug) {
   }));
   const out = { store: p.name, job_no: p.job_no, exportedAt: new Date().toISOString(), jobplanner: { projectId: p.jobplanner_id || null, statusMap: { "0": "open / with the sub (Punchline: Open, Work Required, Not Accepted, In Dispute, Draft)", "1": "in review (Punchline: Ready for Review, Ready to Close)", "2": "closed (Punchline: Closed; Removed also 2, with a REMOVED note)" }, note: "Shape follows PunchlistItemModel (GET/POST /projects/{id}/punchlists), see docs/jobplanner-transfer.md. ballInCourt is read-only in JobPlanner and is carried under punchline.* only. priority 0 low, 1 normal, 2 high. assignedTo = JobPlanner project contact: match by email to /projects/{id}/contacts (negative id = Alleato user). groups: match groupName to the master trade list (26 Electrical = 10109, 09 Finishes = 10100, 23 HVAC = 10108, 22 Plumbing = 10106). C/O and Orig Scope - Gated records are included for the record but pushRecommended = false: they are scope items, not deficiencies. Pushing needs a write-capable key (tools/jobplanner_push.py); the standing key is read-only." }, listFrozen: p.locked_at ? { by: p.locked_by, at: p.locked_at } : null, records };
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(out, null, 1)], { type: "application/json" })); a.download = `${p.name} jobplanner punch ${new Date().toISOString().slice(0, 10)}.json`; a.click();
-  const cols = ["itemNumber", "title", "category", "location", "dueDate", "priority", "groups", "assignedTo", "ballInCourt", "status", "punchlineStatus", "pushRecommended", "notes", "beforePhotos", "afterPhotos", "resolvedOn"];
-  const csv = [cols.join(",")].concat(records.map((r) => [r.itemNumber, r.title, r.category, r.location, r.dueDate || "", r.priority, r.groups.map((g) => g.groupName).join("; "), r.assignedTo ? `${r.assignedTo.contactName} (${r.assignedTo.companyName}) ${r.assignedTo.email}` : "", r.punchline.ballInCourt ? `${r.punchline.ballInCourt.contactName} (${r.punchline.ballInCourt.companyName})` : "", r.status, r.punchline.status, r.punchline.pushRecommended ? "yes" : "no", r.notes, r.beforeAttachments.map((x) => x.url).join(" "), r.afterAttachments.map((x) => x.url).join(" "), r.resolvedOn || ""].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","))).join("\n");
+  const cols = ["type", "itemNumber", "title", "category", "location", "dueDate", "priority", "groups", "assignedTo", "ballInCourt", "status", "punchlineStatus", "pushRecommended", "notes", "beforePhotos", "afterPhotos", "resolvedOn"];
+  const csv = [cols.join(",")].concat(records.map((r) => [r.category, r.itemNumber, r.title, r.category, r.location, r.dueDate || "", r.priority, r.groups.map((g) => g.groupName).join("; "), r.assignedTo ? `${r.assignedTo.contactName} (${r.assignedTo.companyName}) ${r.assignedTo.email}` : "", r.punchline.ballInCourt ? `${r.punchline.ballInCourt.contactName} (${r.punchline.ballInCourt.companyName})` : "", r.status, r.punchline.status, r.punchline.pushRecommended ? "yes" : "no", r.notes, r.beforeAttachments.map((x) => x.url).join(" "), r.afterAttachments.map((x) => x.url).join(" "), r.resolvedOn || ""].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","))).join("\n");
   const c = document.createElement("a"); c.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); c.download = `${p.name} jobplanner punch ${new Date().toISOString().slice(0, 10)}.csv`; setTimeout(() => c.click(), 400);
   toast(`${records.length} records exported (JSON + CSV)`);
 }
