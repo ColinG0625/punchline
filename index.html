@@ -575,7 +575,7 @@ async function renderItem(slug, id) {
     if (!["Closed", "Removed", "Draft"].includes(st)) row2.push(`<button class="btn ghost" style="color:var(--s-notacc)" onclick="move('${slug}','${id}','Removed','Why does this come off the list? (goes on the record)',true)">Remove from list</button>`);
     if (st === "Removed") row2.push(`<button class="btn ghost" onclick="move('${slug}','${id}','Open','Why is it going back on the list?',true)">Put back on the list</button>`);
     if (row2.length) A.push(`<div class="btnrow">${row2.join("")}</div>`);
-    if (st === "Draft") A.push(`<button class="btn ghost" style="color:var(--s-notacc)" onclick="delItem('${slug}','${id}')">Delete draft</button>`);
+    if (st === "Draft") A.push(`<button class="btn ghost" style="color:var(--s-notacc)" onclick="delItem('${slug}','${id}')">Discard draft (kept on record)</button>`);
   }
   shell(`
     <div class="card detail">
@@ -670,7 +670,7 @@ async function comment(slug, id) {
   const el = $("#cmt"); const note = el.value.trim(); if (!note) return;
   try { await api("comment", { id, note }); el.value = ""; loadHistory(id); } catch (e) { toast(e.message, true); }
 }
-async function delItem(slug, id) { if (!confirm("Delete this draft?")) return; try { await api("delete", { id }); await loadBoard(slug, true); go(`#/p/${slug}`); } catch (e) { toast(e.message, true); } }
+async function delItem(slug, id) { const note = await ask("Discard this draft? It stays on the record as Removed.", "", false, "Discard"); if (note === null) return; try { await api("delete", { id, note }); await loadBoard(slug, true); go(`#/p/${slug}`); } catch (e) { toast(e.message, true); } }
 async function delPhoto(slug, pid) { const reason = await ask("Why is this photo being removed? It stays on file and the reason goes in the history.", "", true, "Remove"); if (reason === null) return; try { await api("delete_photo", { photo_id: pid, reason }); await loadBoard(slug, true); render(); } catch (e) { toast(e.message, true); } }
 
 function shrink(file, max = 1600, q = 0.82) {
