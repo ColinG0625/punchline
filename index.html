@@ -279,11 +279,21 @@ function ballInCourt(it, b) {
   }
   return "";
 }
+// Room from the plan's room boxes (pixel bboxes on the plan image), else the item's typed area.
+function roomOf(it, b) {
+  const plan = (b.plans || []).find((p) => p.id === it.plan_id);
+  if (plan && plan.rooms && it.pin_x != null) {
+    const x = it.pin_x * plan.width, y = it.pin_y * plan.height;
+    const hits = plan.rooms.filter((r) => x >= r.bbox[0] && x <= r.bbox[2] && y >= r.bbox[1] && y <= r.bbox[3]);
+    if (hits.length) { const r = hits.sort((a, c) => (a.bbox[2] - a.bbox[0]) * (a.bbox[3] - a.bbox[1]) - (c.bbox[2] - c.bbox[0]) * (c.bbox[3] - c.bbox[1]))[0]; return r.number ? `${r.name} ${r.number}` : r.name; }
+  }
+  return it.area || "";
+}
 const ballChip = (it, b) => `<span class="chip type" style="font-weight:700">&#9679; ${esc(ballInCourt(it, b))}</span>`;
 const TYPES = ["Punch","C/O","Orig Scope - Gated"];
 
 // ---------- state ----------
-const S = { k: null, me: null, projects: null, boards: {}, work: null, filter: "all", type: "", who: "", placing: null };
+const S = { k: null, me: null, projects: null, boards: {}, work: null, filter: "all", type: "", who: "", group: "", placing: null, planId: null };
 const subLike = () => S.me && (S.me.role === "sub" || S.me.role === "helper");
 const MARK = `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="M32 8c-9.9 0-18 7.8-18 17.5C14 38.2 32 56 32 56s18-17.8 18-30.5C50 15.8 41.9 8 32 8z" fill="#fff"/><circle cx="32" cy="25.5" r="6.5" fill="#E4572E"/></svg>`;
 
@@ -433,27 +443,62 @@ async function renderBoard(slug) {
   if (S.type) list = list.filter((i) => i.type === S.type);
   if (S.who) list = list.filter((i) => i.assignee_id === S.who);
   const subs = b.parties.filter((p) => items.some((i) => i.assignee_id === p.id));
-  const rows = list.map((it) => `
+  const byRoom = S.group === "room";
+  const rowOf = (it) => `
     <a class="item ${it.plan_id ? "pinned" : ""}" href="#/p/${slug}/i/${it.id}">
       <div class="num">${it.number}</div>
       <div><div class="t">${esc(it.title)}</div>
-        <div class="m">${stChip(it.status)}${tyChip(it.type)}${it.area ? `<span>${esc(it.area)}</span>` : ""}${it.assignee_id ? `<span class="who">${esc(partyName(b, it.assignee_id))}</span>` : `<span style="color:var(--flag);font-weight:600">unassigned</span>`}${photoCount(it.id) ? `<span class="cam">&#128247; ${photoCount(it.id)}</span>` : ""}${isOverdue(it) ? `<span style="color:var(--s-notacc);font-weight:700">overdue ${fmtD(it.due_date)}</span>` : it.due_date ? `<span>due ${fmtD(it.due_date)}</span>` : ""}</div>
-        ${!["Closed", "Removed", "Draft"].includes(it.status) ? `<div class="m" style="margin-top:4px">${ballChip(it, b)}</div>` : ""}
-      </div></a>`).join("");
+        <div class="m">${stChip(it.status)}${tyChip(it.type)}${roomOf(it, b) ? `<span>${esc(roomOf(it, b))}</span>` : ""}${it.assignee_id ? `<span class="who">${esc(partyName(b, it.assignee_id))}</span>` : `<span style="color:var(--flag);font-weight:600">unassigned</span>`}${photoCount(it.id) ? `<span class="cam">&#128247; ${photoCount(it.id)}</span>` : ""}${isOverdue(it) ? `<span style="color:var(--s-notacc);font-weight:700">overdue ${fmtD(it.due_date)}</span>` : it.due_date ? `<span>due ${fmtD(it.due_date)}</span>` : ""}</div>
+        ${!["Closed", "Removed", "Draft"].includes(it.status) ? `<div class="m" style="margin-top:4px">${ballChip(it, b)}${it.walk_excluded ? `<span class="chip type" style="color:var(--s-notacc)">not in the walk</span>` : ""}</div>` : ""}
+      </div></a>`;
+  let rows;
+  if (byRoom) {
+    const groups = {}; for (const it of list) (groups[roomOf(it, b) || "No room yet"] ||= []).push(it);
+    rows = Object.keys(groups).sort().map((r) => `<div class="group" style="padding:0 14px">${esc(r)} <span style="font-weight:500;text-transform:none;letter-spacing:0">(${groups[r].length})</span></div>${groups[r].map(rowOf).join("")}`).join("");
+  } else rows = list.map(rowOf).join("");
   const c = countsFor(items);
   shell(`
     <div class="h"><div><h1>${esc(b.project.name)}</h1><div class="sub">${esc(b.project.job_no || "")} &middot; ${esc(b.project.address || "")}</div></div>
       <div class="sub" style="text-align:right">${c.open} open<br>${c.closed} closed</div></div>
     ${lockBanner(b)}
+    ${storeLine(b)}
     ${b.project.notes && me.role !== "owner" ? `<div class="sub" style="margin:-6px 0 12px">${esc(b.project.notes)}</div>` : ""}
     <div class="tabs"><a class="on" href="#/p/${slug}">List</a><a href="#/p/${slug}/plan">Plan</a><a href="#/p/${slug}/signoff">Sign-off</a></div>
     <div class="filters">${Object.entries(F).map(([k, v]) => `<button class="fbtn ${S.filter === k ? "on" : ""}" onclick="S.filter='${k}';render()">${v.label}<span class="n">${items.filter(v.f).length}</span></button>`).join("")}
+      <button class="fbtn ${byRoom ? "on" : ""}" onclick="S.group=S.group==='room'?'':'room';render()">By room</button>
       <select class="sel" onchange="S.type=this.value;render()"><option value="">Any type</option>${TYPES.map((t) => `<option ${S.type === t ? "selected" : ""}>${t}</option>`).join("")}</select>
       ${!subLike() && subs.length ? `<select class="sel" onchange="S.who=this.value;render()"><option value="">Anyone</option>${subs.map((p) => `<option value="${p.id}" ${S.who === p.id ? "selected" : ""}>${esc(partyName(b, p.id))}</option>`).join("")}</select>` : ""}
     </div>
     <div class="card">${rows || `<div class="empty">Nothing here.</div>`}</div>
     ${me.role === "admin" && !b.project.locked_at ? `<button class="fab" title="New item" onclick="newItem('${slug}')">+</button>` : ""}
   `, { back: "Stores" });
+}
+function storeLine(b) {
+  const p = b.project, me = S.me; const bits = [];
+  if (p.walk_date) bits.push(`<b>Walk ${fmtD(p.walk_date)}</b>${p.walk_attendees ? " with " + esc(p.walk_attendees) : ""}${p.walk_note && me.role !== "owner" ? ": " + esc(p.walk_note) : ""}`);
+  else if (me.role === "admin") bits.push("No walk date set");
+  if (me.role !== "owner" && p.manager_name) bits.push(`Store manager: ${esc(p.manager_name)}${p.manager_phone && me.role === "admin" ? " " + esc(p.manager_phone) : ""}${p.manager_note && me.role === "admin" ? " (" + esc(p.manager_note) + ")" : ""}`);
+  if (!bits.length && me.role !== "admin") return "";
+  return `<div class="sub" style="margin:-4px 0 12px">${bits.join(" &middot; ")}${me.role === "admin" ? ` <button class="btn sm ghost" onclick="editStore('${p.slug}')">Store details</button>` : ""}</div>`;
+}
+async function editStore(slug) {
+  const b = S.boards[slug]; const p = b.project;
+  const f = (id, label, val, type = "text") => `<div class="field"><label>${label}</label><input class="in" id="${id}" type="${type}" value="${esc(val || "")}"></div>`;
+  const bg = sheet(`<h2>${esc(p.name)} store details</h2>
+    <div class="two">${f("st_walk", "Walk date", p.walk_date, "date")}${f("st_att", "Walk attendees", p.walk_attendees)}</div>
+    ${f("st_wnote", "Walk note (Alleato only)", p.walk_note)}
+    <div class="two">${f("st_mgr", "Store manager", p.manager_name)}${f("st_mph", "Manager phone", p.manager_phone)}</div>
+    ${f("st_mnote", "Manager note (Alleato only)", p.manager_note)}
+    <div class="two">${f("st_addr", "Address", p.address)}${f("st_rep", "Owner's representative", p.owner_rep)}</div>
+    <div class="two">${f("st_pm", "Alleato PM", p.alleato_pm)}${f("st_lead", "Alleato field lead", p.field_lead)}</div>
+    ${f("st_notes", "Store notes (Alleato only)", p.notes)}
+    <div class="btnrow"><button class="btn" id="c">Cancel</button><button class="btn primary" id="s">Save</button></div>`);
+  $("#c", bg).onclick = () => bg.remove();
+  $("#s", bg).onclick = async () => {
+    const v = (id) => $("#" + id, bg).value.trim();
+    try { await api("project_save", { id: p.id, walk_date: v("st_walk"), walk_attendees: v("st_att"), walk_note: v("st_wnote"), manager_name: v("st_mgr"), manager_phone: v("st_mph"), manager_note: v("st_mnote"), address: v("st_addr"), owner_rep: v("st_rep"), alleato_pm: v("st_pm"), field_lead: v("st_lead"), notes: v("st_notes") }); bg.remove(); await loadBoard(slug, true); render(); toast("Saved"); }
+    catch (e) { toast(e.message, true); }
+  };
 }
 function lockBanner(b) {
   const p = b.project, me = S.me;
@@ -516,7 +561,8 @@ async function renderItem(slug, id) {
       <button class="btn" onclick="addPhotos('${slug}','${id}','after')">&#128247; After</button>
       <a class="btn" href="#/p/${slug}/plan/${id}">&#128205; ${it.plan_id ? "Move pin" : "Pin on plan"}</a>
       <button class="btn" onclick="editItem('${slug}','${id}')">&#9998; Edit</button>
-      <button class="btn" onclick="notified('${slug}','${id}')">&#128222; Told them</button></div>`);
+      <button class="btn" onclick="notified('${slug}','${id}')">&#128222; Told them</button>
+      <button class="btn" onclick="toggleWalk('${slug}','${id}',${it.walk_excluded ? "false" : "true"})">${it.walk_excluded ? "Put in the walk" : "Leave out of the walk"}</button></div>`);
     const row2 = [];
     if (["Open", "Draft", "Not Accepted", "In Dispute"].includes(st) && it.assignee_id) row2.push(`<button class="btn ink" onclick="move('${slug}','${id}','Work Required','Note to the sub (optional)')">Send to sub</button>`);
     if (st === "Draft" && !it.assignee_id) row2.push(`<button class="btn ink" onclick="move('${slug}','${id}','Open','')">Publish</button>`);
@@ -534,7 +580,7 @@ async function renderItem(slug, id) {
       <div class="head"><div class="row"><span class="num">#${it.number} &middot; ${esc(b.project.name.toUpperCase())}</span>${stChip(st)}${tyChip(it.type)}${it.priority === "High" ? `<span class="chip type co">High priority</span>` : ""}</div>
         <h1>${esc(it.title)}</h1>${it.detail ? `<div class="notes" style="margin-top:8px;color:var(--muted)">${esc(it.detail)}</div>` : ""}</div>
       <div class="facts">
-        <div><small>Where</small>${esc(it.area || "See plan")}</div>
+        <div><small>Where</small>${esc(roomOf(it, b) || it.area || "See plan")}${it.walk_excluded ? ` <span class="chip type" style="color:var(--s-notacc)">not in the walk</span>` : ""}</div>
         <div><small>Responsible</small>${it.assignee_id ? esc(partyFull(b, it.assignee_id)) : `<span style="color:var(--flag)">Unassigned</span>`}</div>
         <div><small>Due</small>${it.due_date ? (isOverdue(it) ? `<span style="color:var(--s-notacc);font-weight:700">${fmtD(it.due_date)} overdue</span>` : fmtD(it.due_date)) : "No date set"}</div>
         <div><small>Ball in court</small><b>${esc(ballInCourt(it, b))}</b></div>
@@ -608,6 +654,9 @@ async function move(slug, id, to, prompt, required) {
   const cur = (S.boards[slug]?.items || []).find((i) => i.id === id);
   try { await api("transition", { id, to, note, from_status: cur?.status }); toast(`Now: ${to}`); await loadBoard(slug, true); render(); }
   catch (e) { toast(e.message, true); if (/changed since|just changed/.test(e.message)) { await loadBoard(slug, true); render(); } }
+}
+async function toggleWalk(slug, id, excluded) {
+  try { await api("update", { id, walk_excluded: excluded, note: excluded ? "left out of the walk" : "put back in the walk" }); await loadBoard(slug, true); render(); } catch (e) { toast(e.message, true); }
 }
 async function notified(slug, id) {
   const bg = sheet(`<h2>Put a text, email or call on the record</h2><div class="field"><label>How</label><select class="in" id="nt_how"><option>text</option><option>email</option><option>call</option><option>in person</option></select></div>
@@ -695,7 +744,7 @@ async function renderPlan(slug, placeId) {
   const me = S.me;
   const plans = b.plans;
   if (!plans.length) return shell(`<div class="tabs"><a href="#/p/${slug}">List</a><a class="on" href="#/p/${slug}/plan">Plan</a><a href="#/p/${slug}/signoff">Sign-off</a></div><div class="empty">No floor plan loaded for ${esc(b.project.name)} yet.</div>`, { back: b.project.name, wide: true });
-  const plan = plans[0];
+  const plan = plans.find((p) => p.id === S.planId) || plans[0];
   const placing = placeId && me.role === "admin" ? b.items.find((i) => i.id === placeId) : null;
   const pins = b.items.filter((i) => i.plan_id === plan.id && i.pin_x != null && i.status !== "Draft" || (i.id === placeId && i.pin_x != null));
   shell(`
@@ -709,6 +758,7 @@ async function renderPlan(slug, placeId) {
       <div class="planctl"><button onclick="zoomPlan(1.4)">+</button><button onclick="zoomPlan(1/1.4)">&minus;</button><button onclick="fitPlan()" style="font-size:12px">fit</button></div>
     </div>
     ${plan.note ? `<div class="sub" style="margin-top:8px">${esc(plan.name)}: ${esc(plan.note)}</div>` : ""}
+    ${plans.length > 1 ? `<div class="sub" style="margin-top:6px">Plan version: ${plans.map((p) => `<a href="#" onclick="event.preventDefault();S.planId='${p.id}';renderPlan('${slug}'${placeId ? ",'" + placeId + "'" : ""})" style="${p.id === plan.id ? "font-weight:700" : ""}">${esc(p.name)}</a>`).join(" | ")}</div>` : ""}
     <div class="planlegend">${["Work Required", "Ready for Review", "Not Accepted", "Ready to Close", "Closed"].map((s) => `<span><i style="background:${STATUS_HEX[s]}"></i>${s}</span>`).join("")}<span><i style="background:${STATUS_HEX["Open"]}"></i>Open / unassigned</span></div>
     ${!placing && me.role === "admin" ? `<div class="sub" style="margin-top:8px">Open an item and tap "Pin on plan" to place it. ${b.items.filter((i) => i.pin_x == null && i.status !== "Closed").length} open items have no pin yet.</div>` : ""}
   `, { back: b.project.name, wide: true });
@@ -762,7 +812,7 @@ function showPop(e, slug, id) {
   document.querySelectorAll(".pop").forEach((p) => p.remove());
   const wrap = $(".planwrap"); const r = wrap.getBoundingClientRect();
   const pop = document.createElement("div"); pop.className = "pop";
-  pop.innerHTML = `<b>#${it.number} ${esc(it.title)}</b>${stChip(it.status)} ${tyChip(it.type)}<div style="margin-top:6px;color:var(--muted)">${esc(it.area || "")}${it.assignee_id ? " · " + esc(partyName(b, it.assignee_id)) : ""}</div><a class="btn sm ink" style="margin-top:8px" href="#/p/${slug}/i/${it.id}">Open item</a>`;
+  pop.innerHTML = `<b>#${it.number} ${esc(it.title)}</b>${stChip(it.status)} ${tyChip(it.type)}<div style="margin-top:6px;color:var(--muted)">${esc(roomOf(it, b) || "")}${it.assignee_id ? " · " + esc(partyName(b, it.assignee_id)) : ""}</div><a class="btn sm ink" style="margin-top:8px" href="#/p/${slug}/i/${it.id}">Open item</a>`;
   let x = e.clientX - r.left + 10, y = e.clientY - r.top + 10;
   pop.style.left = Math.min(x, wrap.clientWidth - 270) + "px"; pop.style.top = Math.min(y, wrap.clientHeight - 140) + "px";
   wrap.appendChild(pop);
@@ -785,7 +835,7 @@ async function renderWork() {
       <div class="sub" style="margin-top:4px">${due.today.length ? `<b style="color:var(--flag)">Today / overdue:</b> ${[...new Set(due.today.map((i) => i.projects.name))].map((n) => `${esc(n)} (${due.today.filter((i) => i.projects.name === n).map((i) => "#" + i.number).join(", ")})`).join("; ")}` : "Nothing dated for today."}
       ${due.week.length ? `<br><b>This week:</b> ${[...new Set(due.week.map((i) => i.projects.name))].map((n) => `${esc(n)} (${due.week.filter((i) => i.projects.name === n).map((i) => "#" + i.number + " " + fmtD(i.due_date)).join(", ")})`).join("; ")}` : ""}</div></div>` : "";
   const sections = Object.values(byProj).map(({ p, items }) => `
-    <div class="group">${esc(p.name)} &middot; ${esc(p.address || "")}</div>
+    <div class="group">${esc(p.name)} &middot; ${esc(p.address || "")}${p.walk_date ? ` &middot; walk ${fmtD(p.walk_date)}` : ""}${p.manager_name ? ` &middot; store manager ${esc(p.manager_name)}` : ""}</div>
     <div class="card">${items.map((it) => `
       <a class="item ${it.plan_id ? "pinned" : ""}" href="#/p/${p.slug}/i/${it.id}"><div class="num">${it.number}</div>
         <div><div class="t">${esc(it.title)}</div><div class="m">${stChip(it.status)}${tyChip(it.type)}${it.area ? `<span>${esc(it.area)}</span>` : ""}${isOverdue(it) ? `<span style="color:var(--s-notacc);font-weight:700">overdue</span>` : it.due_date ? `<span>due ${fmtD(it.due_date)}</span>` : ""}</div></div></a>`).join("")}</div>`).join("");
@@ -909,7 +959,8 @@ async function renderPrint(slug) {
       <div class="info"><div><small>Project name</small>${esc(p.owner_name || "")} Store Remodel - ${esc(p.name)}</div><div><small>Job no.</small>${esc(p.job_no || "")}</div>
         <div><small>Site address</small>${esc(p.address || "")}</div><div><small>Owner</small>${esc(p.owner_name || "")}</div>
         <div><small>Owner's representative</small>${esc(p.owner_rep || "")}</div><div><small>Alleato project manager</small>${esc(p.alleato_pm || "")}</div>
-        <div><small>Alleato field lead</small>${esc(p.field_lead || "")}</div><div><small>Items</small>${items.length} total, ${items.filter((i) => i.status === "Closed").length} closed</div></div>
+        <div><small>Alleato field lead</small>${esc(p.field_lead || "")}</div><div><small>Walk date</small>${p.walk_date ? fmtD(p.walk_date) + (p.walk_attendees ? " with " + esc(p.walk_attendees) : "") : ""}</div>
+        <div class="full" style="grid-column:1/-1"><small>Items</small>${items.length} total, ${items.filter((i) => i.status === "Closed").length} closed</div></div>
       <h2>Attendees / parties</h2>
       <table><tr><th>Name</th><th>Company</th><th>Role</th><th>Phone / email</th></tr>${attendees.map((a) => `<tr><td>${esc(a.name)}</td><td>${esc(a.company || "")}</td><td>${a.role === "owner" ? "Owner's Representative" : "Alleato Group"}</td><td>${esc([a.phone, a.email].filter(Boolean).join(" / "))}</td></tr>`).join("")}</table>
       <h2>Substantial completion</h2>
@@ -935,7 +986,7 @@ async function packagePdf(slug) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "tabloid" });
   const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 36;
-  const header = (sub) => { doc.setFont("helvetica", "bold"); doc.setFontSize(16); doc.setTextColor(0); doc.text(`PUNCH LIST  |  ${p.name}  |  Job ${p.job_no || ""}`, M, M + 4); doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.text(`${sub}   ${p.address || ""}   Generated ${new Date().toLocaleDateString("en-US")}${p.locked_at ? `   LIST FROZEN, agreed by ${p.locked_by} ${fmtD(p.locked_at)}` : "   (list not yet frozen)"}`, M, M + 20); doc.setDrawColor(0); doc.line(M, M + 26, W - M, M + 26); };
+  const header = (sub) => { doc.setFont("helvetica", "bold"); doc.setFontSize(16); doc.setTextColor(0); doc.text(`PUNCH LIST  |  ${p.name}  |  Job ${p.job_no || ""}`, M, M + 4); doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.text(`${sub}   ${p.address || ""}   Walk ${p.walk_date ? fmtD(p.walk_date) + (p.walk_attendees ? " with " + p.walk_attendees : "") : "date not set"}   Generated ${new Date().toLocaleDateString("en-US")}${p.locked_at ? `   LIST FROZEN, ${p.locked_role === "owner" ? "agreed by the owner " : "frozen by Alleato "}${p.locked_by} ${fmtD(p.locked_at)}` : "   (list not yet frozen)"}`, M, M + 20); doc.setDrawColor(0); doc.line(M, M + 26, W - M, M + 26); };
   const footer = () => { const n = doc.internal.getNumberOfPages(); doc.setFontSize(8); doc.setTextColor(90); doc.text(`Punchline  |  Alleato Group  |  Page ${n}`, W - M, H - 14, { align: "right" }); doc.setTextColor(0); };
   const hex = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
   for (const plan of b.plans) {
@@ -956,17 +1007,29 @@ async function packagePdf(slug) {
     } catch (e) { toast(e.message, true); }
     doc.addPage();
   }
-  const cols = [["#", 26], ["Type", 52], ["Room / area", 120], ["Work to be performed", 420], ["Responsible", 130], ["Status", 90], ["Due", 50], ["Notes for the sub", W - 2 * M - 26 - 52 - 120 - 420 - 130 - 90 - 50]];
+  // before-photo thumbnails (first two per item), loaded once
+  const thumbs = {};
+  for (const it of items) {
+    const bf = b.photos.filter((x) => x.item_id === it.id && x.kind === "before" && !x.removed_at).slice(0, 2);
+    thumbs[it.id] = [];
+    for (const ph of bf) { try { thumbs[it.id].push(await loadImg(ph.url)); } catch {} }
+  }
+  const TH = 54;
+  const cols = [["#", 26], ["Type", 52], ["Room", 110], ["Work to be performed", 330], ["Responsible", 120], ["Status", 80], ["Due", 48], ["Note", 190], ["Before", W - 2 * M - 26 - 52 - 110 - 330 - 120 - 80 - 48 - 190]];
   const table = (rows, title) => {
     header(title); let y = M + 40;
     const head = () => { doc.setFont("helvetica", "bold"); doc.setFontSize(8); let x = M; doc.setFillColor(230); doc.rect(M, y - 9, W - 2 * M, 14, "F"); for (const [n, w] of cols) { doc.text(n, x + 3, y); x += w; } y += 10; doc.setFont("helvetica", "normal"); };
     head();
     for (const it of rows) {
-      const cells = [String(it.number), it.type, it.area || "", it.title, partyFull(b, it.assignee_id) || "unassigned", it.status, it.due_date ? fmtD(it.due_date) : "", it.detail || ""];
-      const lines = cells.map((c, i) => doc.splitTextToSize(c, cols[i][1] - 6)); const h = Math.max(...lines.map((l) => l.length)) * 9 + 6;
+      const cells = [String(it.number), it.type, roomOf(it, b) || "", it.title + (it.walk_excluded ? " (not in the walk)" : ""), partyFull(b, it.assignee_id) || "unassigned", it.status, it.due_date ? fmtD(it.due_date) : "", it.detail || ""];
+      const lines = cells.map((c, i) => doc.splitTextToSize(c, cols[i][1] - 6));
+      const th = thumbs[it.id].length ? TH + 6 : 0;
+      const h = Math.max(Math.max(...lines.map((l) => l.length)) * 9 + 6, th);
       if (y + h > H - 40) { footer(); doc.addPage(); header(title + " (continued)"); y = M + 40; head(); }
       let x = M; doc.setDrawColor(180); doc.line(M, y - 7, W - M, y - 7);
-      lines.forEach((l, i) => { doc.text(l, x + 3, y + 2); x += cols[i][1]; }); y += h;
+      lines.forEach((l, i) => { doc.text(l, x + 3, y + 2); x += cols[i][1]; });
+      let tx = x + 3; for (const im of thumbs[it.id]) { const sc = TH / Math.max(im.width, im.height); try { doc.addImage(im, "JPEG", tx, y - 5, im.width * sc, im.height * sc); } catch {} tx += im.width * sc + 4; }
+      y += h;
     }
     footer();
   };
