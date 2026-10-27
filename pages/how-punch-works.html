@@ -1,0 +1,87 @@
+<!-- Punchline content partial: How punch works. Self-contained, no scripts, no external assets. Include inside the page body. -->
+<section class="pl-how">
+<style>
+.pl-how{--ink:#323232;--accent:#DB802D;--soft:#F4F1EC;--line:#DDD8D0;--muted:#6B6B6B;color:var(--ink);font-family:-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;line-height:1.5;max-width:760px;margin:0 auto;padding:16px}
+.pl-how h1{font-size:26px;line-height:1.2;margin:0 0 6px}
+.pl-how .kicker{color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:.08em;font-size:12px;margin:0 0 4px}
+.pl-how .lead{font-size:16px;color:var(--muted);margin:0 0 20px}
+.pl-how h2{font-size:18px;margin:28px 0 10px;padding-bottom:6px;border-bottom:3px solid var(--accent);display:inline-block}
+.pl-how ol.steps{list-style:none;counter-reset:step;margin:0;padding:0}
+.pl-how ol.steps li{counter-increment:step;position:relative;padding:12px 12px 12px 54px;border:1px solid var(--line);border-radius:10px;margin:0 0 10px;background:#fff}
+.pl-how ol.steps li::before{content:counter(step);position:absolute;left:12px;top:12px;width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:15px}
+.pl-how ol.steps b.t{display:block;font-size:16px;margin:2px 0 2px}
+.pl-how .ball{display:inline-block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 8px;border-radius:6px;background:var(--soft);color:var(--ink);margin:0 0 6px}
+.pl-how .ball.owner{background:#E6F4EE;color:#1E6B45}
+.pl-how .ball.sub{background:#E9EEF9;color:#2B4C8C}
+.pl-how .ball.alleato{background:#FBE9E3;color:#9A3718}
+.pl-how ol.steps p{margin:0;font-size:14px}
+.pl-how .status{color:var(--muted);font-size:13px;margin-top:4px}
+.pl-how .types{display:grid;grid-template-columns:1fr;gap:10px;margin:0}
+.pl-how .types div{border:1px solid var(--line);border-left:5px solid var(--accent);border-radius:10px;padding:10px 12px;background:#fff}
+.pl-how .types b{display:block;font-size:15px;margin-bottom:2px}
+.pl-how .types p{margin:0;font-size:14px}
+.pl-how .note{background:var(--soft);border-radius:10px;padding:12px 14px;font-size:14px;margin:12px 0 0}
+.pl-how .note b{color:var(--ink)}
+@media (min-width:640px){.pl-how{padding:24px}.pl-how h1{font-size:32px}.pl-how .types{grid-template-columns:1fr 1fr 1fr}}
+</style>
+
+<p class="kicker">Punchline</p>
+<h1>How punch works</h1>
+<p class="lead">One list per store. Every item is pinned on the plan, proven with a photo, and closed by the owner. Nobody drives back out to look.</p>
+
+<h2>The lifecycle</h2>
+<ol class="steps">
+  <li>
+    <b class="t">Walk</b>
+    <span class="ball alleato">Ball: Alleato</span>
+    <p>Alleato walks the store and logs each item: a pin on the floor plan, a photo, the room, the type (Punch, C/O, or Orig Scope - Gated) and the responsible party. The pin is how a sub finds it without a phone call.</p>
+    <p class="status">Status: Draft until it is sent, then Open.</p>
+  </li>
+  <li>
+    <b class="t">Owner agreed</b>
+    <span class="ball owner">Ball: Owner</span>
+    <p>Andrew Mulder reviews the store's list in his link and accepts it. The list freezes at that moment. Nothing gets added after that without an unlock, and every unlock is recorded with who opened it and when.</p>
+    <p class="status">The frozen list is the list the subs are chased on.</p>
+  </li>
+  <li>
+    <b class="t">Assigned</b>
+    <span class="ball alleato">Ball: Alleato</span>
+    <p>Each item goes to its sub, or in house to Demerick, with a due date. The person gets one link that shows only their items across every store, with the pin, the detail and any before photos.</p>
+    <p class="status">Status: Work Required.</p>
+  </li>
+  <li>
+    <b class="t">Completed by the sub</b>
+    <span class="ball sub">Ball: Sub</span>
+    <p>The sub fixes it and adds a phone photo of the finished work. The photo is required: the item cannot be marked complete without one. If the sub does not agree with the item, they can dispute it with a reason and it goes back to Alleato.</p>
+    <p class="status">Status: Ready for Review (or In Dispute).</p>
+  </li>
+  <li>
+    <b class="t">Verified by Alleato</b>
+    <span class="ball alleato">Ball: Alleato</span>
+    <p>Alleato checks the photo against the item. Pass, and it goes to the owner. Not right, and it goes back to the sub with a reason.</p>
+    <p class="status">Status: Ready to Close, or Not Accepted.</p>
+  </li>
+  <li>
+    <b class="t">Accepted by the owner</b>
+    <span class="ball owner">Ball: Owner</span>
+    <p>The owner reviews the before and after pair from his desk and either accepts it or sends it back with a note saying what still needs doing. No site visit.</p>
+    <p class="status">Status: Closed, or Not Accepted.</p>
+  </li>
+  <li>
+    <b class="t">Closed</b>
+    <span class="ball">Done</span>
+    <p>The item is closed with its photo on file. The store closes when every item on the frozen list is Closed or formally removed. The owner signs substantial and final completion in Punchline, and the sign-off form prints from the live record.</p>
+  </li>
+</ol>
+
+<h2>The three item types</h2>
+<div class="types">
+  <div><b>Punch</b><p>A fix to work we touched. It ties directly to an originally contracted scope item: correcting or finishing contract work.</p></div>
+  <div><b>C/O</b><p>Not original scope and not tied to our work, or an owner-requested change to contract work already done. It is priced before it is worked.</p></div>
+  <div><b>Orig Scope - Gated</b><p>Original contract scope still open because it is waiting on the owner or on material.</p></div>
+</div>
+<p class="note"><b>Not on the list:</b> nothing financial and nothing closeout. Change order pricing, POs, billing, lien waivers and closeout documents live in their own places. The punch list is only the work that still has to be done in the store.</p>
+
+<h2>Hand-off to JobPlanner</h2>
+<p class="note">JobPlanner stays the record of record. Each Punchline item is exported as one record to the store's JobPlanner punch list, with its location, photos and who closed it. When a JobPlanner write key exists, the push is direct; until then the export is a file that is loaded in.</p>
+</section>

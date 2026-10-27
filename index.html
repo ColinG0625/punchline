@@ -254,13 +254,32 @@ textarea.ta{min-height:76px;resize:vertical}
 <script>
 // ---------- config ----------
 const API = "https://wwwtpeeywpdiazhwzwlr.supabase.co/functions/v1/api";
-const STATUSES = ["Draft","Open","Work Required","In Dispute","Ready for Review","Not Accepted","Ready to Close","Closed"];
+const STATUSES = ["Draft","Open","Work Required","In Dispute","Ready for Review","Not Accepted","Ready to Close","Closed","Removed"];
+const JP_STATUS = {"Draft":0,"Open":0,"Work Required":0,"In Dispute":0,"Not Accepted":0,"Ready for Review":1,"Ready to Close":1,"Closed":2,"Removed":2};
+const JP_PROJECT = {};
 const STATUS_COLOR = {"Draft":"var(--s-draft)","Open":"var(--s-open)","Work Required":"var(--s-work)","In Dispute":"var(--s-dispute)","Ready for Review":"var(--s-review)","Not Accepted":"var(--s-notacc)","Ready to Close":"var(--s-close)","Closed":"var(--s-closed)"};
-const STATUS_HEX = {"Draft":"#9AA0A6","Open":"#5B6470","Work Required":"#2D6CDF","In Dispute":"#8E44AD","Ready for Review":"#D99A06","Not Accepted":"#D64545","Ready to Close":"#1E9E8A","Closed":"#2F8F5B"};
-const STATUS_CLASS = {"Draft":"s-Draft","Open":"s-Open","Work Required":"s-Work","In Dispute":"s-In","Ready for Review":"s-Ready","Not Accepted":"s-Not","Ready to Close":"s-ReadyC","Closed":"s-Closed"};
+const STATUS_HEX = {"Draft":"#9AA0A6","Open":"#5B6470","Work Required":"#2D6CDF","In Dispute":"#8E44AD","Ready for Review":"#D99A06","Not Accepted":"#D64545","Ready to Close":"#1E9E8A","Closed":"#2F8F5B","Removed":"#9AA0A6"};
+const STATUS_CLASS = {"Draft":"s-Draft","Open":"s-Open","Work Required":"s-Work","In Dispute":"s-In","Ready for Review":"s-Ready","Not Accepted":"s-Not","Ready to Close":"s-ReadyC","Closed":"s-Closed","Removed":"s-Draft"};
 const PLAIN = { // what each status means to the person reading it
   "Draft":"Not sent yet", "Open":"Logged, no sub yet", "Work Required":"With the sub", "In Dispute":"Sub disputes it",
-  "Ready for Review":"Sub says done", "Not Accepted":"Sent back", "Ready to Close":"Alleato verified", "Closed":"Owner accepted" };
+  "Ready for Review":"Sub says done", "Not Accepted":"Sent back", "Ready to Close":"Alleato verified", "Closed":"Owner accepted", "Removed":"Taken off the list (on record)" };
+// Who holds the ball at each status. The one thing everyone should see at a glance.
+function ballInCourt(it, b) {
+  const who = it.assignee_id ? partyName(b, it.assignee_id) : "nobody yet";
+  switch (it.status) {
+    case "Draft": return "Alleato: publish or drop";
+    case "Open": return it.assignee_id ? "Alleato: send to " + who : "Alleato: assign it";
+    case "Work Required": return who + ": do it, photo it";
+    case "In Dispute": return "Alleato: settle the dispute";
+    case "Ready for Review": return "Alleato: verify";
+    case "Not Accepted": return who + ": fix and resubmit";
+    case "Ready to Close": return "Owner: accept";
+    case "Closed": return "Done";
+    case "Removed": return "Off the list";
+  }
+  return "";
+}
+const ballChip = (it, b) => `<span class="chip type" style="font-weight:700">&#9679; ${esc(ballInCourt(it, b))}</span>`;
 const TYPES = ["Punch","C/O","Orig Scope - Gated"];
 
 // ---------- state ----------
@@ -323,7 +342,8 @@ function render() {
     return renderBoard(slug);
   }
   if (parts[0] === "people") return renderPeople();
-  if (parts[0] === "process") return renderProcess();
+  if (parts[0] === "process" || parts[0] === "how") return renderPage("how-punch-works", "How punch works");
+  if (parts[0] === "why") return renderPage("benefits", "What it saves");
   if (parts[0] === "work") return renderWork();
   return renderHome();
 }
@@ -359,7 +379,7 @@ function renderFace(err) {
 // ---------- home ----------
 function countsFor(items) {
   const c = { open: 0, review: 0, closed: 0, total: items.length };
-  for (const it of items) { if (it.status === "Closed") c.closed++; else { c.open++; if (["Ready for Review", "Ready to Close"].includes(it.status)) c.review++; } }
+  for (const it of items) { if (it.status === "Closed") c.closed++; else if (it.status === "Removed" || it.status === "Draft") { /* not on the list */ } else { c.open++; if (["Ready for Review", "Ready to Close"].includes(it.status)) c.review++; } }
   return c;
 }
 async function renderHome() {
@@ -382,7 +402,8 @@ async function renderHome() {
     <div class="grid">${cards || `<div class="empty">No stores yet.</div>`}</div>
     <div class="stack" style="margin-top:18px">
       ${me.role === "admin" ? `<a class="bigbtn" href="#/people">People &amp; links<small>Subs, the owner, and the link each one opens</small></a>` : ""}
-      <a class="bigbtn" href="#/process">How Punchline works<small>Pinned, proven, closed. The six steps.</small></a>
+      <a class="bigbtn" href="#/how">How punch works<small>Walk, owner agrees, assigned, completed, verified, accepted, closed.</small></a>
+      <a class="bigbtn" href="#/why">What it saves<small>Miles, trips, days to payment, one frozen list, the JobPlanner record, $0 to run.</small></a>
     </div>`);
 }
 
@@ -401,7 +422,10 @@ async function renderBoard(slug) {
     withsub: { label: "With sub", f: (i) => ["Work Required", "Not Accepted", "Open"].includes(i.status) },
     verified: { label: "Verified", f: (i) => i.status === "Ready to Close" },
     closed: { label: "Closed", f: (i) => i.status === "Closed" },
+    removed: { label: "Removed", f: (i) => i.status === "Removed" || i.status === "Draft" },
   };
+  if (me.role !== "admin") { F.removed = { label: "Removed", f: (i) => i.status === "Removed" }; }
+  F.all.f = (i) => me.role === "admin" || i.status !== "Removed";
   if (me.role !== "admin") delete F.withsub;
   if (!F[S.filter]) S.filter = "all";
   let list = items.filter(F[S.filter].f);
@@ -413,6 +437,7 @@ async function renderBoard(slug) {
       <div class="num">${it.number}</div>
       <div><div class="t">${esc(it.title)}</div>
         <div class="m">${stChip(it.status)}${tyChip(it.type)}${it.area ? `<span>${esc(it.area)}</span>` : ""}${it.assignee_id ? `<span class="who">${esc(partyName(b, it.assignee_id))}</span>` : `<span style="color:var(--flag);font-weight:600">unassigned</span>`}${photoCount(it.id) ? `<span class="cam">&#128247; ${photoCount(it.id)}</span>` : ""}${isOverdue(it) ? `<span style="color:var(--s-notacc);font-weight:700">overdue ${fmtD(it.due_date)}</span>` : it.due_date ? `<span>due ${fmtD(it.due_date)}</span>` : ""}</div>
+        ${!["Closed", "Removed", "Draft"].includes(it.status) ? `<div class="m" style="margin-top:4px">${ballChip(it, b)}</div>` : ""}
       </div></a>`).join("");
   const c = countsFor(items);
   shell(`
@@ -431,6 +456,8 @@ async function renderBoard(slug) {
 }
 function lockBanner(b) {
   const p = b.project, me = S.me;
+  const live = b.items.filter((i) => !["Draft", "Removed"].includes(i.status));
+  if (live.length && live.every((i) => i.status === "Closed")) return `<div class="card" style="padding:12px 14px;margin-bottom:12px;border-color:var(--s-closed)"><b>&#10003; Store complete.</b> Every item is closed or formally removed. ${me.role === "owner" ? "Sign final acceptance on the Sign-off tab." : "Final acceptance can be signed on the Sign-off tab."}</div>`;
   if (p.locked_at) return `<div class="card" style="padding:12px 14px;margin-bottom:12px;border-color:var(--s-closed)"><b>&#128274; List frozen</b> &middot; agreed by ${esc(p.locked_by)} on ${fmtD(p.locked_at)}. No items can be added.${me.role === "admin" ? ` <button class="btn sm ghost" style="margin-left:8px" onclick="unlockList('${p.slug}')">Unlock (recorded)</button>` : ""}</div>`;
   if (me.role === "owner") return `<div class="card" style="padding:12px 14px;margin-bottom:12px;border-color:var(--flag)"><b>This list is not frozen yet.</b> <span class="sub">Review every item, then agree to it. After that nothing gets added without a recorded unlock.</span><div style="margin-top:8px"><button class="btn sm primary" onclick="lockList('${p.slug}')">I agree to this list, freeze it</button></div></div>`;
   if (me.role === "admin") return `<div class="sub" style="margin:-4px 0 12px">List open for adds. ${b.log.length ? `Last: ${esc(b.log[b.log.length - 1].action)} by ${esc(b.log[b.log.length - 1].parties?.name || "")} ${fmtD(b.log[b.log.length - 1].created_at)}.` : ""} <button class="btn sm ghost" onclick="lockList('${p.slug}')">Freeze now</button></div>`;
@@ -493,6 +520,8 @@ async function renderItem(slug, id) {
     if (st === "Ready for Review") row2.push(`<button class="btn warn" onclick="move('${slug}','${id}','Not Accepted','What still needs doing?',true)">Send back to sub</button>`);
     if (["Ready to Close", "Ready for Review"].includes(st)) row2.push(`<button class="btn" onclick="move('${slug}','${id}','Closed','Closing on the owner\\'s behalf? Say who accepted it.',true)">Close</button>`);
     if (st === "Closed") row2.push(`<button class="btn ghost" onclick="move('${slug}','${id}','Work Required','Why is it being reopened?',true)">Reopen</button>`);
+    if (!["Closed", "Removed", "Draft"].includes(st)) row2.push(`<button class="btn ghost" style="color:var(--s-notacc)" onclick="move('${slug}','${id}','Removed','Why does this come off the list? (goes on the record)',true)">Remove from list</button>`);
+    if (st === "Removed") row2.push(`<button class="btn ghost" onclick="move('${slug}','${id}','Open','Why is it going back on the list?',true)">Put back on the list</button>`);
     if (row2.length) A.push(`<div class="btnrow">${row2.join("")}</div>`);
     if (st === "Draft") A.push(`<button class="btn ghost" style="color:var(--s-notacc)" onclick="delItem('${slug}','${id}')">Delete draft</button>`);
   }
@@ -504,7 +533,8 @@ async function renderItem(slug, id) {
         <div><small>Where</small>${esc(it.area || "See plan")}</div>
         <div><small>Responsible</small>${it.assignee_id ? esc(partyFull(b, it.assignee_id)) : `<span style="color:var(--flag)">Unassigned</span>`}</div>
         <div><small>Due</small>${it.due_date ? (isOverdue(it) ? `<span style="color:var(--s-notacc);font-weight:700">${fmtD(it.due_date)} overdue</span>` : fmtD(it.due_date)) : "No date set"}</div>
-        <div><small>Means</small>${esc(PLAIN[st])}</div>
+        <div><small>Ball in court</small><b>${esc(ballInCourt(it, b))}</b></div>
+        <div class="full"><small>Means</small>${esc(PLAIN[st])}</div>
         ${it.trade ? `<div class="full"><small>Trade</small>${esc(it.trade)}</div>` : ""}
       </div>
       ${plan && it.pin_x != null ? `<div class="sec"><h3>On the plan <a class="lnk" href="#/p/${slug}/plan/${id}">Open plan</a></h3>
@@ -782,13 +812,13 @@ async function renderSignoff(slug) {
   const b = await loadBoard(slug, true);
   document.title = `${b.project.name} sign-off · Punchline`;
   const me = S.me; const items = b.items.filter((i) => i.status !== "Draft");
-  const open = items.filter((i) => i.status !== "Closed");
+  const open = items.filter((i) => i.status !== "Closed" && i.status !== "Removed");
   const sub = b.signoffs.filter((s) => s.kind === "substantial"), fin = b.signoffs.filter((s) => s.kind === "final");
   const canSign = ["owner", "admin"].includes(me.role);
   shell(`
     <div class="tabs"><a href="#/p/${slug}">List</a><a href="#/p/${slug}/plan">Plan</a><a class="on" href="#/p/${slug}/signoff">Sign-off</a></div>
     <div class="h"><div><h1>${esc(b.project.name)} sign-off</h1><div class="sub">${open.length ? `${open.length} of ${items.length} items still open` : `All ${items.length} items closed`}</div></div>
-      <div class="btnrow"><a class="btn sm" href="#/p/${slug}/print">Sign-off form</a>${me.role !== "owner" ? `<button class="btn sm ink" onclick="packagePdf('${slug}')">Punch package PDF</button>` : ""}</div></div>
+      <div class="btnrow"><a class="btn sm" href="#/p/${slug}/print">Sign-off form</a>${me.role !== "owner" ? `<button class="btn sm ink" onclick="packagePdf('${slug}')">Punch package PDF</button><button class="btn sm" onclick="jobplannerExport('${slug}')">JobPlanner export</button>` : ""}</div></div>
     ${b.log.length ? `<div class="sub" style="margin:-6px 0 12px">${b.log.map((l) => `${l.action === "lock" ? "&#128274; Frozen" : "&#128275; Unlocked"} by ${esc(l.parties?.name || "")} ${fmtDT(l.created_at)}${l.note ? ": " + esc(l.note) : ""}`).join("<br>")}</div>` : ""}
     <div class="stack">
       <div class="card" style="padding:16px"><h2 style="font-size:17px">Substantial completion</h2><div class="sub" style="margin:4px 0 10px">The work is substantially complete and the owner can occupy and use it. Open items get finished by their due dates.</div>
@@ -829,7 +859,7 @@ async function renderPrint(slug) {
   const sub = b.signoffs.filter((s) => s.kind === "substantial").pop(), fin = b.signoffs.filter((s) => s.kind === "final").pop();
   const p = b.project;
   const attendees = b.parties.filter((x) => x.role === "admin" || x.role === "owner");
-  const rows = items.map((i) => `<tr><td>${i.number}</td><td>${esc(i.type)}</td><td>${esc(i.area || "")}</td><td>${esc(i.title)}</td><td>${esc(partyName(b, i.assignee_id))}</td><td>${esc(i.status)}</td><td>${doneDate(i) ? "&#10003; " + doneDate(i) : ""}</td><td>${verDate(i) ? "&#10003; " + verDate(i) : ""}</td><td>${i.status === "Closed" ? "&#10003; " + fmtD(i.closed_at) : ""}</td></tr>`).join("");
+  const rows = items.filter((i) => i.status !== "Removed").map((i) => `<tr><td>${i.number}</td><td>${esc(i.type)}</td><td>${esc(i.area || "")}</td><td>${esc(i.title)}</td><td>${esc(partyName(b, i.assignee_id))}</td><td>${esc(i.status)}</td><td>${doneDate(i) ? "&#10003; " + doneDate(i) : ""}</td><td>${verDate(i) ? "&#10003; " + verDate(i) : ""}</td><td>${i.status === "Closed" ? "&#10003; " + fmtD(i.closed_at) : ""}</td></tr>`).join("");
   shell(`
     <div class="noprint btnrow" style="margin-bottom:14px"><button class="btn ink" onclick="window.print()">Print / save as PDF</button><button class="btn" onclick="exportCsv('${slug}')">Download CSV</button></div>
     <div class="screen-doc"><div class="doc">
@@ -913,7 +943,50 @@ function exportCsv(slug) {
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" })); a.download = `${b.project.name}-punch-${new Date().toISOString().slice(0, 10)}.csv`; a.click();
 }
 
-// ---------- process ----------
+// ---------- content pages (static partials in pages/, written by the markup session) ----------
+const pageCache = {};
+async function renderPage(name, title) {
+  document.title = `${title} · Punchline`;
+  const back = subLike() ? "Your work" : "Stores";
+  shell(loading(), { back });
+  try {
+    if (!pageCache[name]) { const r = await fetch(`pages/${name}.html`, { cache: "no-cache" }); if (!r.ok) throw new Error("page not published"); pageCache[name] = await r.text(); }
+    shell(`<style>.pl-how,.pl-ben{font-family:inherit;--ink:var(--ink);--accent:var(--flag);--soft:var(--soft);--line:var(--line);--muted:var(--muted);padding:0}.pl-how ol.steps li,.pl-ben .stat,.pl-ben table{background:var(--card)}</style>${pageCache[name]}
+      ${name === "how-punch-works" ? statusTable() : ""}`, { back });
+  } catch (e) { if (name === "how-punch-works") return renderProcess(); shell(`<div class="empty">${esc(e.message)}</div>`, { back }); }
+}
+function statusTable() {
+  return `<div class="card" style="padding:16px;margin-top:14px"><h2 style="font-size:16px">Status words in the app</h2>
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:8px">${STATUSES.map((s) => `<tr style="border-top:1px solid var(--line)"><td style="padding:6px 0">${stChip(s)}</td><td style="padding:6px 8px;color:var(--muted)">${esc(PLAIN[s])}</td></tr>`).join("")}</table></div>`;
+}
+// JobPlanner export: one record per item in the shape of JobPlanner's punchlist GET schema (probed 10/27 on Westfield 2403),
+// plus the Punchline status so Andrew Cannon can load it in one pass. Writes nothing to JobPlanner (read-only key).
+function jobplannerExport(slug) {
+  const b = S.boards[slug]; const p = b.project;
+  const items = b.items.filter((i) => i.status !== "Draft");
+  const party = (id) => { const x = b.parties.find((q) => q.id === id); return x ? { contactName: x.name, companyName: x.company || "", email: x.email || "" } : null; };
+  const prio = { High: 1, Normal: 2, Low: 3 };
+  const bic = (it) => { const s = it.status; if (["Work Required", "Not Accepted", "Open"].includes(s)) return party(it.assignee_id); if (["Ready for Review", "In Dispute"].includes(s)) return { contactName: p.field_lead || "Alleato", companyName: "Alleato Group", email: "" }; if (s === "Ready to Close") return { contactName: p.owner_rep || "Owner", companyName: p.owner_name || "", email: "" }; return null; };
+  const ph = (id, kind) => b.photos.filter((x) => x.item_id === id && x.kind === kind).map((x) => ({ url: x.url, takenOn: x.created_at, note: "signed link, valid 6 h from export; re-export for fresh links" }));
+  const records = items.map((it) => ({
+    itemNumber: String(it.number).padStart(3, "0"), title: it.title, category: it.type, location: it.area || "", locationId: 0,
+    dueDate: it.due_date ? it.due_date + "T12:00:00.000Z" : null, priority: prio[it.priority] || 2, groups: it.trade ? [it.trade] : [],
+    assignedTo: party(it.assignee_id), ballInCourt: bic(it), status: JP_STATUS[it.status] ?? 0,
+    notes: [it.detail, it.status === "Removed" ? "REMOVED from the list (see Punchline history)" : ""].filter(Boolean).join(" | "),
+    beforeAttachments: ph(it.id, "before"), afterAttachments: ph(it.id, "after"),
+    workCompletedBy: ["Ready for Review", "Ready to Close", "Closed"].includes(it.status) ? party(it.assignee_id) : null,
+    workCompletedOn: null, resolvedBy: it.status === "Closed" ? { contactName: p.owner_rep || "", companyName: p.owner_name || "", email: "" } : null, resolvedOn: it.closed_at,
+    punchline: { id: it.id, status: it.status, type: it.type, plan: it.plan_id ? { pin_x: it.pin_x, pin_y: it.pin_y } : null, link: `${location.origin}${location.pathname}#/p/${slug}/i/${it.id}` },
+  }));
+  const out = { store: p.name, job_no: p.job_no, exportedAt: new Date().toISOString(), jobplanner: { projectId: p.jobplanner_id || null, statusMap: { "0": "open / with the sub (Punchline: Open, Work Required, Not Accepted, In Dispute, Draft)", "1": "in review (Punchline: Ready for Review, Ready to Close)", "2": "closed (Punchline: Closed; Removed also 2, with a REMOVED note)" }, note: "Shape follows GET /projects/{id}/punchlists as observed 10/27/2026 on Westfield 2403. JobPlanner priority 1 = high, 3 = low. assignedTo/ballInCourt are JobPlanner project contacts: match by email to /projects/{id}/contacts. Pushing needs a write-capable key (tools/jobplanner_push.py); the standing key is read-only." }, listFrozen: p.locked_at ? { by: p.locked_by, at: p.locked_at } : null, records };
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(out, null, 1)], { type: "application/json" })); a.download = `${p.name} jobplanner punch ${new Date().toISOString().slice(0, 10)}.json`; a.click();
+  const cols = ["itemNumber", "title", "category", "location", "dueDate", "priority", "groups", "assignedTo", "ballInCourt", "status", "punchlineStatus", "notes", "beforePhotos", "afterPhotos", "resolvedOn"];
+  const csv = [cols.join(",")].concat(records.map((r) => [r.itemNumber, r.title, r.category, r.location, r.dueDate || "", r.priority, r.groups.join("; "), r.assignedTo ? `${r.assignedTo.contactName} (${r.assignedTo.companyName}) ${r.assignedTo.email}` : "", r.ballInCourt ? `${r.ballInCourt.contactName} (${r.ballInCourt.companyName})` : "", r.status, r.punchline.status, r.notes, r.beforeAttachments.map((x) => x.url).join(" "), r.afterAttachments.map((x) => x.url).join(" "), r.resolvedOn || ""].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","))).join("\n");
+  const c = document.createElement("a"); c.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); c.download = `${p.name} jobplanner punch ${new Date().toISOString().slice(0, 10)}.csv`; setTimeout(() => c.click(), 400);
+  toast(`${records.length} records exported (JSON + CSV)`);
+}
+
+// ---------- process (fallback if the content page is missing) ----------
 function renderProcess() {
   document.title = "How it works · Punchline";
   const me = S.me;
