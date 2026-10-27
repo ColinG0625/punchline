@@ -1,0 +1,861 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#16191D">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="description" content="Punchline. Every punch item pinned on the plan, proven with a photo, closed by the owner.">
+<title>Punchline</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23E4572E'/%3E%3Cpath d='M32 12c-8.3 0-15 6.5-15 14.6 0 10.6 15 25.4 15 25.4s15-14.8 15-25.4C47 18.5 40.3 12 32 12z' fill='%23fff'/%3E%3Ccircle cx='32' cy='27' r='5.5' fill='%23E4572E'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@87.5,400;87.5,500;87.5,600;87.5,700;87.5,800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#16191D; --paper:#F4F2EC; --card:#FFFFFF; --line:#E2DED6; --muted:#6B7078; --soft:#F0EDE6;
+  --flag:#E4572E; --flag-ink:#FFFFFF;
+  --s-draft:#9AA0A6; --s-open:#5B6470; --s-work:#2D6CDF; --s-dispute:#8E44AD; --s-review:#D99A06; --s-notacc:#D64545; --s-close:#1E9E8A; --s-closed:#2F8F5B;
+  --radius:14px; --shadow:0 1px 2px rgba(0,0,0,.06),0 6px 18px rgba(22,25,29,.06);
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --ink:#F2F1EC; --paper:#131517; --card:#1D2024; --line:#2C3035; --muted:#A0A6AE; --soft:#24282D; --shadow:0 1px 2px rgba(0,0,0,.4),0 6px 18px rgba(0,0,0,.35);
+}}
+:root[data-theme="dark"]{ --ink:#F2F1EC; --paper:#131517; --card:#1D2024; --line:#2C3035; --muted:#A0A6AE; --soft:#24282D; --shadow:0 1px 2px rgba(0,0,0,.4),0 6px 18px rgba(0,0,0,.35); }
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--ink);font-family:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;font-stretch:87.5%;-webkit-font-smoothing:antialiased}
+body{min-height:100dvh;padding-bottom:env(safe-area-inset-bottom)}
+a{color:inherit}
+button{font:inherit;color:inherit}
+h1,h2,h3{margin:0;font-weight:800;letter-spacing:-.01em}
+.wrap{max-width:760px;margin:0 auto;padding:0 16px}
+.wrap.wide{max-width:1100px}
+
+/* top bar */
+.bar{position:sticky;top:0;z-index:20;background:var(--ink);color:#fff;padding-top:env(safe-area-inset-top)}
+.bar .wrap{display:flex;align-items:center;gap:10px;height:54px}
+.brand{display:flex;align-items:center;gap:9px;text-decoration:none;font-weight:800;font-size:18px;letter-spacing:.01em}
+.brand .mark{width:26px;height:26px;border-radius:7px;background:var(--flag);display:grid;place-items:center}
+.brand .mark svg{width:16px;height:16px}
+.brand span b{color:var(--flag)}
+.bar .who{margin-left:auto;font-size:13px;color:#C9CDD3;text-align:right;line-height:1.15}
+.bar .who small{display:block;color:#8E949C;font-size:11px}
+.back{display:inline-flex;align-items:center;gap:6px;background:none;border:0;color:#fff;padding:8px 6px 8px 0;font-weight:600;font-size:15px;cursor:pointer}
+
+/* face / landing */
+.face{min-height:100dvh;display:flex;flex-direction:column;justify-content:center;background:var(--ink);color:#fff;padding:40px 20px}
+.face .logo{width:72px;height:72px;border-radius:20px;background:var(--flag);display:grid;place-items:center;margin-bottom:28px}
+.face .logo svg{width:44px;height:44px}
+.face h1{font-size:48px;line-height:1;letter-spacing:-.03em}
+.face h1 b{color:var(--flag)}
+.face p.lead{font-size:18px;color:#C9CDD3;max-width:440px;margin:16px 0 36px;line-height:1.4}
+.face form{display:flex;gap:8px;max-width:440px}
+.face input{flex:1;padding:14px;border-radius:12px;border:1px solid #3A3F46;background:#22262B;color:#fff;font-size:16px}
+.face button{padding:14px 18px;border-radius:12px;border:0;background:var(--flag);color:#fff;font-weight:700;font-size:16px}
+.face .foot{margin-top:48px;color:#7E858E;font-size:13px}
+.face .err{color:#FF9B82;margin-top:12px;font-size:14px}
+
+/* layout bits */
+.page{padding:18px 0 90px}
+.h{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:6px 0 14px}
+.h h1{font-size:26px}
+.h h2{font-size:20px}
+.sub{color:var(--muted);font-size:14px;margin-top:3px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(230px,1fr))}
+.store{display:block;padding:16px;text-decoration:none}
+.store h3{font-size:19px}
+.store .meta{color:var(--muted);font-size:13px;margin:4px 0 12px}
+.store .nums{display:flex;gap:14px;font-size:13px}
+.store .nums b{display:block;font-size:22px;line-height:1.1}
+.store .nums .hot b{color:var(--s-review)}
+.store .nums .done b{color:var(--s-closed)}
+.bigbtn{display:flex;align-items:center;justify-content:space-between;width:100%;padding:16px;border-radius:var(--radius);border:1px solid var(--line);background:var(--card);text-decoration:none;font-weight:600;font-size:16px;box-shadow:var(--shadow);cursor:pointer;text-align:left}
+.bigbtn small{display:block;font-weight:400;color:var(--muted);font-size:13px;margin-top:2px}
+.stack{display:flex;flex-direction:column;gap:10px}
+
+/* chips */
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap;border:1px solid transparent}
+.chip.type{background:var(--soft);color:var(--ink);border-color:var(--line)}
+.chip.type.co{background:#FBE9E3;color:#9A3718;border-color:#F3C9BC}
+.chip.type.gated{background:#E9EEF9;color:#2B4C8C;border-color:#C9D5EE}
+:root[data-theme="dark"] .chip.type.co,:root:not([data-theme="light"]) .chip.type.co{background:#3A2219;color:#F2A58B;border-color:#5A3326}
+.st{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;font-size:12px;font-weight:700;color:#fff;white-space:nowrap}
+.st::before{content:"";width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.75)}
+.st.s-Draft{background:var(--s-draft)} .st.s-Open{background:var(--s-open)} .st.s-Work{background:var(--s-work)}
+.st.s-In{background:var(--s-dispute)} .st.s-Ready{background:var(--s-review)} .st.s-ReadyC{background:var(--s-close)}
+.st.s-Not{background:var(--s-notacc)} .st.s-Closed{background:var(--s-closed)}
+.filters{display:flex;gap:8px;overflow-x:auto;padding:4px 0 10px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.filters::-webkit-scrollbar{display:none}
+.fbtn{flex:0 0 auto;padding:8px 13px;border-radius:999px;border:1px solid var(--line);background:var(--card);font-size:14px;font-weight:600;cursor:pointer}
+.fbtn.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.fbtn .n{opacity:.6;margin-left:4px;font-weight:500}
+select.sel{padding:8px 12px;border-radius:999px;border:1px solid var(--line);background:var(--card);font:inherit;font-size:14px;color:var(--ink);max-width:48vw}
+.tabs{display:flex;gap:4px;background:var(--soft);padding:4px;border-radius:12px;margin-bottom:14px}
+.tabs a{flex:1;text-align:center;padding:9px 4px;border-radius:9px;text-decoration:none;font-weight:600;font-size:14px;color:var(--muted)}
+.tabs a.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
+
+/* item rows */
+.item{display:grid;grid-template-columns:44px 1fr;gap:12px;padding:13px 14px;text-decoration:none;border-bottom:1px solid var(--line);align-items:start;cursor:pointer}
+.item:last-child{border-bottom:0}
+.item .num{width:40px;height:40px;border-radius:11px;background:var(--ink);color:#fff;display:grid;place-items:center;font-weight:800;font-size:15px}
+.item.pinned .num{background:var(--flag)}
+.item .t{font-weight:600;font-size:15px;line-height:1.25}
+.item .m{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:7px;font-size:12px;color:var(--muted)}
+.item .m .who{font-weight:600;color:var(--ink)}
+.item .cam{display:inline-flex;align-items:center;gap:3px}
+.group{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:18px 0 8px}
+.empty{padding:28px 16px;text-align:center;color:var(--muted);font-size:15px}
+
+/* detail */
+.detail .head{padding:16px;border-bottom:1px solid var(--line)}
+.detail .head .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.detail .head .num{font-weight:800;color:var(--flag);font-size:14px;letter-spacing:.06em}
+.detail h1{font-size:21px;line-height:1.25}
+.detail .facts{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px;padding:14px 16px;border-bottom:1px solid var(--line);font-size:14px}
+.detail .facts div small{display:block;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}
+.detail .facts .full{grid-column:1/-1}
+.sec{padding:14px 16px;border-bottom:1px solid var(--line)}
+.sec:last-child{border-bottom:0}
+.sec h3{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
+.sec h3 .lnk{font-weight:600;text-transform:none;letter-spacing:0;color:var(--flag);background:none;border:0;cursor:pointer;font-size:13px;padding:0}
+.notes{white-space:pre-wrap;font-size:14px;line-height:1.45}
+.photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px}
+.photos a{display:block;aspect-ratio:1;border-radius:10px;overflow:hidden;background:var(--soft);position:relative}
+.photos img{width:100%;height:100%;object-fit:cover;display:block}
+.photos .tag{position:absolute;left:6px;bottom:6px;background:rgba(0,0,0,.6);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:6px;text-transform:uppercase;letter-spacing:.05em}
+.photos .del{position:absolute;right:4px;top:4px;background:rgba(0,0,0,.6);color:#fff;border:0;border-radius:50%;width:24px;height:24px;cursor:pointer;font-size:14px;line-height:1}
+.minimap{position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--line);background:#fff;aspect-ratio:16/10}
+.minimap img{position:absolute;width:100%;height:100%;object-fit:cover}
+.minimap .pin{position:absolute;transform:translate(-50%,-100%)}
+.actions{display:flex;flex-direction:column;gap:8px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:13px 16px;border-radius:12px;border:1px solid var(--line);background:var(--card);font-weight:700;font-size:15px;cursor:pointer;text-decoration:none;min-height:46px}
+.btn.primary{background:var(--flag);color:#fff;border-color:var(--flag)}
+.btn.ink{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.btn.ok{background:var(--s-closed);color:#fff;border-color:var(--s-closed)}
+.btn.warn{background:#fff;color:var(--s-notacc);border-color:var(--s-notacc)}
+.btn.ghost{background:transparent}
+.btn.sm{padding:8px 12px;font-size:13px;min-height:0;border-radius:9px}
+.btn:disabled{opacity:.5;cursor:default}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap}
+.btnrow .btn{flex:1}
+.hist{list-style:none;margin:0;padding:0}
+.hist li{display:grid;grid-template-columns:10px 1fr;gap:10px;padding:8px 0;font-size:14px;border-bottom:1px dashed var(--line)}
+.hist li:last-child{border-bottom:0}
+.hist .dot{width:10px;height:10px;border-radius:50%;background:var(--line);margin-top:5px}
+.hist .dot.status{background:var(--flag)}
+.hist .dot.photo{background:var(--s-work)}
+.hist .meta{color:var(--muted);font-size:12px;margin-top:2px}
+.hist .note{margin-top:4px;white-space:pre-wrap}
+textarea.ta,input.in,select.in{width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:var(--paper);color:var(--ink);font:inherit;font-size:15px}
+textarea.ta{min-height:76px;resize:vertical}
+.field{margin-bottom:12px}
+.field label{display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:5px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fab{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom));width:58px;height:58px;border-radius:18px;background:var(--flag);color:#fff;border:0;font-size:30px;line-height:1;box-shadow:0 8px 24px rgba(228,87,46,.4);cursor:pointer;z-index:15}
+.toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:999px;font-size:14px;font-weight:600;z-index:50;box-shadow:var(--shadow);max-width:90vw;text-align:center}
+.toast.err{background:var(--s-notacc)}
+.loading{padding:40px;text-align:center;color:var(--muted)}
+.spin{width:22px;height:22px;border:3px solid var(--line);border-top-color:var(--flag);border-radius:50%;animation:sp .8s linear infinite;margin:0 auto 10px}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* sheet (modal) */
+.sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:40;display:flex;align-items:flex-end;justify-content:center}
+.sheet{background:var(--card);width:100%;max-width:640px;max-height:92dvh;overflow:auto;border-radius:18px 18px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+@media (min-width:700px){.sheet-bg{align-items:center}.sheet{border-radius:18px}}
+.sheet h2{font-size:19px;margin-bottom:12px}
+.sheet .grab{width:40px;height:4px;border-radius:2px;background:var(--line);margin:-6px auto 14px}
+
+/* plan */
+.planwrap{position:relative;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;background:#fff;height:calc(100dvh - 190px);min-height:380px}
+.planscroll{position:absolute;inset:0;overflow:auto;touch-action:pan-x pan-y;-webkit-overflow-scrolling:touch}
+.planstage{position:relative;transform-origin:0 0}
+.planstage img{display:block;user-select:none;-webkit-user-drag:none}
+.pin{position:absolute;transform:translate(-50%,-100%);width:30px;height:38px;cursor:pointer;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))}
+.pin svg{width:100%;height:100%;display:block}
+.pin text{font-family:"Archivo",sans-serif;font-weight:800;font-size:13px;fill:#fff}
+.pin.lg{width:40px;height:50px}
+.planctl{position:absolute;right:10px;bottom:10px;display:flex;flex-direction:column;gap:6px;z-index:3}
+.planctl button{width:42px;height:42px;border-radius:11px;border:1px solid var(--line);background:var(--card);font-size:20px;font-weight:700;box-shadow:var(--shadow);cursor:pointer}
+.planhint{position:absolute;left:10px;top:10px;right:60px;z-index:3;background:var(--ink);color:#fff;padding:9px 12px;border-radius:10px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:10px}
+.planhint button{margin-left:auto;background:var(--flag);border:0;color:#fff;border-radius:8px;padding:6px 10px;font-weight:700;cursor:pointer}
+.planlegend{display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:8px}
+.planlegend span{display:inline-flex;align-items:center;gap:5px}
+.planlegend i{width:10px;height:10px;border-radius:50%;display:inline-block}
+.pop{position:absolute;z-index:4;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:10px 12px;max-width:260px;font-size:13px}
+.pop b{display:block;margin-bottom:4px}
+
+/* people */
+.person{padding:14px 16px;border-bottom:1px solid var(--line)}
+.person:last-child{border-bottom:0}
+.person .top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.person .nm{font-weight:700;font-size:15px}
+.person .co{color:var(--muted);font-size:13px}
+.person .ct{color:var(--muted);font-size:13px;margin-top:4px;word-break:break-all}
+.person .lnk{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.role{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 8px;border-radius:6px;background:var(--soft)}
+.role.owner{background:#E6F4EE;color:#1E6B45}.role.admin{background:#FBE9E3;color:#9A3718}
+:root[data-theme="dark"] .role.owner,:root:not([data-theme="light"]) .role.owner{background:#1D3A2B;color:#8FD4AE}
+
+/* process */
+.steps{counter-reset:s;list-style:none;margin:0;padding:0}
+.steps li{display:grid;grid-template-columns:38px 1fr;gap:12px;padding:14px 0;border-bottom:1px solid var(--line)}
+.steps li::before{counter-increment:s;content:counter(s);width:32px;height:32px;border-radius:10px;background:var(--ink);color:#fff;display:grid;place-items:center;font-weight:800}
+.steps li:last-child{border-bottom:0}
+.steps b{display:block;font-size:15px;margin-bottom:3px}
+.steps p{margin:0;font-size:14px;color:var(--muted);line-height:1.45}
+.flow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:10px 0 4px;font-size:12px}
+.flow .arrow{color:var(--muted)}
+
+/* print */
+.print{display:none}
+@media print{
+  body{background:#fff;color:#000}
+  .bar,.fab,.toast,.noprint{display:none!important}
+  .print{display:block}
+  .page{padding:0}
+  .doc{font-family:"Archivo",Arial,sans-serif;font-size:10.5pt;color:#000;max-width:none}
+  .doc h1{font-size:18pt;margin:0 0 2pt}
+  .doc .tl{display:flex;justify-content:space-between;border-bottom:2px solid #000;padding-bottom:6pt;margin-bottom:10pt}
+  .doc h2{font-size:11pt;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid #000;margin:14pt 0 6pt;padding-bottom:2pt}
+  .doc table{width:100%;border-collapse:collapse;font-size:9pt}
+  .doc th,.doc td{border:1px solid #666;padding:4pt 5pt;vertical-align:top;text-align:left}
+  .doc th{background:#eee}
+  .doc .info{display:grid;grid-template-columns:1fr 1fr;gap:4pt 18pt}
+  .doc .info div small{display:block;font-size:7.5pt;text-transform:uppercase;letter-spacing:.06em;color:#444}
+  .doc .sig{display:grid;grid-template-columns:1fr 1fr;gap:18pt;margin-top:10pt}
+  .doc .sig div{border-top:1px solid #000;padding-top:4pt;font-size:9pt}
+  .doc .box{border:1px solid #000;padding:8pt;margin-top:6pt;font-size:9.5pt}
+  .doc .pg{page-break-before:always}
+  .doc .foot{margin-top:14pt;font-size:8pt;color:#444;text-align:center}
+}
+.doc{display:none}
+@media print{.doc{display:block}}
+.screen-doc .doc{display:block}
+.screen-doc .doc{background:#fff;color:#000;padding:24px;border-radius:var(--radius);border:1px solid var(--line);font-size:14px}
+.screen-doc .doc h1{font-size:22px}
+.screen-doc .doc .tl{display:flex;justify-content:space-between;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:12px;flex-wrap:wrap;gap:6px}
+.screen-doc .doc h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid #000;margin:18px 0 8px;padding-bottom:3px}
+.screen-doc .doc table{width:100%;border-collapse:collapse;font-size:12px}
+.screen-doc .doc th,.screen-doc .doc td{border:1px solid #888;padding:5px 6px;vertical-align:top;text-align:left}
+.screen-doc .doc th{background:#eee}
+.screen-doc .doc .info{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px}
+.screen-doc .doc .info div small{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#444}
+.screen-doc .doc .sig{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:12px}
+.screen-doc .doc .sig div{border-top:1px solid #000;padding-top:5px;font-size:12px}
+.screen-doc .doc .box{border:1px solid #000;padding:10px;margin-top:8px;font-size:13px}
+.screen-doc .doc .foot{margin-top:16px;font-size:11px;color:#444;text-align:center}
+.tw{overflow-x:auto}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+// ---------- config ----------
+const API = "https://wwwtpeeywpdiazhwzwlr.supabase.co/functions/v1/api";
+const STATUSES = ["Draft","Open","Work Required","In Dispute","Ready for Review","Not Accepted","Ready to Close","Closed"];
+const STATUS_COLOR = {"Draft":"var(--s-draft)","Open":"var(--s-open)","Work Required":"var(--s-work)","In Dispute":"var(--s-dispute)","Ready for Review":"var(--s-review)","Not Accepted":"var(--s-notacc)","Ready to Close":"var(--s-close)","Closed":"var(--s-closed)"};
+const STATUS_HEX = {"Draft":"#9AA0A6","Open":"#5B6470","Work Required":"#2D6CDF","In Dispute":"#8E44AD","Ready for Review":"#D99A06","Not Accepted":"#D64545","Ready to Close":"#1E9E8A","Closed":"#2F8F5B"};
+const STATUS_CLASS = {"Draft":"s-Draft","Open":"s-Open","Work Required":"s-Work","In Dispute":"s-In","Ready for Review":"s-Ready","Not Accepted":"s-Not","Ready to Close":"s-ReadyC","Closed":"s-Closed"};
+const PLAIN = { // what each status means to the person reading it
+  "Draft":"Not sent yet", "Open":"Logged, no sub yet", "Work Required":"With the sub", "In Dispute":"Sub disputes it",
+  "Ready for Review":"Sub says done", "Not Accepted":"Sent back", "Ready to Close":"Alleato verified", "Closed":"Owner accepted" };
+const TYPES = ["Punch","C/O","Orig Scope - Gated"];
+
+// ---------- state ----------
+const S = { k: null, me: null, projects: null, boards: {}, work: null, filter: "all", type: "", who: "", placing: null };
+const MARK = `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="M32 8c-9.9 0-18 7.8-18 17.5C14 38.2 32 56 32 56s18-17.8 18-30.5C50 15.8 41.9 8 32 8z" fill="#fff"/><circle cx="32" cy="25.5" r="6.5" fill="#E4572E"/></svg>`;
+
+const qs = new URLSearchParams(location.search);
+if (qs.get("k")) { try { localStorage.setItem("pl_k", qs.get("k")); } catch {} history.replaceState(null, "", location.pathname + location.hash); }
+try { S.k = localStorage.getItem("pl_k"); } catch {}
+
+// ---------- helpers ----------
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmtD = (d) => d ? new Date(d).toLocaleDateString("en-US", { month: "numeric", day: "numeric", year: "2-digit" }) : "";
+const fmtDT = (d) => d ? new Date(d).toLocaleString("en-US", { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+const stChip = (s) => `<span class="st ${STATUS_CLASS[s] || ""}" title="${esc(PLAIN[s] || "")}">${esc(s)}</span>`;
+const tyChip = (t) => `<span class="chip type ${t === "C/O" ? "co" : t === "Orig Scope - Gated" ? "gated" : ""}">${esc(t)}</span>`;
+const pinSvg = (n, color) => `<svg viewBox="0 0 30 38" xmlns="http://www.w3.org/2000/svg"><path d="M15 1C7.3 1 1 7.1 1 14.6 1 24.5 15 37 15 37s14-12.5 14-22.4C29 7.1 22.7 1 15 1z" fill="${color}" stroke="#fff" stroke-width="1.5"/><text x="15" y="19" text-anchor="middle">${n}</text></svg>`;
+let toastT;
+function toast(msg, err) { let t = $(".toast"); if (!t) { t = document.createElement("div"); document.body.appendChild(t); } t.className = "toast" + (err ? " err" : ""); t.textContent = msg; clearTimeout(toastT); toastT = setTimeout(() => t.remove(), err ? 5000 : 2600); }
+
+async function api(op, args = {}) {
+  const r = await fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op, k: S.k, ...args }) });
+  const j = await r.json().catch(() => ({ error: "bad response" }));
+  if (!r.ok || j.error) { if (r.status === 401) { S.me = null; } throw new Error(j.error || `HTTP ${r.status}`); }
+  return j;
+}
+function partyName(board, id) { const p = (board?.parties || []).find((x) => x.id === id); return p ? (p.company && p.role === "sub" ? p.company : p.name) : ""; }
+function partyFull(board, id) { const p = (board?.parties || []).find((x) => x.id === id); return p ? [p.name, p.company].filter(Boolean).join(", ") : ""; }
+function isOverdue(it) { return it.due_date && it.status !== "Closed" && new Date(it.due_date) < new Date(new Date().toDateString()); }
+function linkFor(token) { return `${location.origin}${location.pathname}?k=${encodeURIComponent(token)}`; }
+async function copy(text) { try { await navigator.clipboard.writeText(text); toast("Link copied"); } catch { prompt("Copy this link:", text); } }
+
+// ---------- routing ----------
+function go(h) { location.hash = h; }
+window.addEventListener("hashchange", render);
+async function boot() {
+  if (!S.k) return renderFace();
+  try { const r = await api("me"); S.me = r.me; S.projects = r.projects; }
+  catch (e) { return renderFace(e.message); }
+  render();
+}
+async function loadBoard(slug, force) {
+  if (S.boards[slug] && !force) return S.boards[slug];
+  const b = await api("board", { project: slug });
+  S.boards[slug] = b; return b;
+}
+
+function render() {
+  if (!S.me) return renderFace();
+  const h = location.hash.replace(/^#\/?/, "");
+  const parts = h.split("/").filter(Boolean);
+  if (parts[0] === "p" && parts[1]) {
+    const slug = parts[1];
+    if (parts[2] === "i" && parts[3]) return renderItem(slug, parts[3]);
+    if (parts[2] === "plan") return renderPlan(slug, parts[3]);
+    if (parts[2] === "signoff") return renderSignoff(slug);
+    if (parts[2] === "print") return renderPrint(slug);
+    return renderBoard(slug);
+  }
+  if (parts[0] === "people") return renderPeople();
+  if (parts[0] === "process") return renderProcess();
+  if (parts[0] === "work") return renderWork();
+  return renderHome();
+}
+
+function shell(inner, opts = {}) {
+  const me = S.me;
+  $("#app").innerHTML = `
+    <header class="bar"><div class="wrap">
+      ${opts.back ? `<button class="back" onclick="history.length>1?history.back():go('')">&#8592; ${esc(opts.back)}</button>` : `<a class="brand" href="#/"><span class="mark">${MARK}</span><span>Punch<b>line</b></span></a>`}
+      <div class="who">${esc(me.name)}<small>${esc(me.company || "")} &middot; ${me.role === "admin" ? "Alleato" : me.role === "owner" ? "Owner" : "Subcontractor"}</small></div>
+    </div></header>
+    <main class="wrap ${opts.wide ? "wide" : ""}"><div class="page">${inner}</div></main>`;
+  window.scrollTo(0, 0);
+}
+const loading = () => `<div class="loading"><div class="spin"></div>Loading</div>`;
+
+// ---------- face / landing ----------
+function renderFace(err) {
+  document.title = "Punchline";
+  $("#app").innerHTML = `<div class="face">
+    <div class="logo">${MARK}</div>
+    <h1>Punch<b>line</b></h1>
+    <p class="lead">Every open item pinned on the plan, proven with a photo, closed by the owner. Nobody drives back out to look.</p>
+    <form onsubmit="event.preventDefault();S.k=this.k.value.trim();try{localStorage.setItem('pl_k',S.k)}catch{};boot()">
+      <input name="k" placeholder="Paste your access code" autocomplete="off" value="">
+      <button type="submit">Open</button>
+    </form>
+    ${err ? `<div class="err">${esc(err)}</div>` : `<div class="err" style="color:#8E949C">Open the link you were sent and this fills itself in.</div>`}
+    <div class="foot">Punchline &middot; built for the field by Colin Gillespie</div>
+  </div>`;
+}
+
+// ---------- home ----------
+function countsFor(items) {
+  const c = { open: 0, review: 0, closed: 0, total: items.length };
+  for (const it of items) { if (it.status === "Closed") c.closed++; else { c.open++; if (["Ready for Review", "Ready to Close"].includes(it.status)) c.review++; } }
+  return c;
+}
+async function renderHome() {
+  const me = S.me;
+  if (me.role === "sub") return renderWork();
+  document.title = "Punchline";
+  shell(loading());
+  // load every board for counts (small data)
+  await Promise.all(S.projects.map((p) => loadBoard(p.slug)));
+  const cards = S.projects.map((p) => {
+    const b = S.boards[p.slug]; const c = countsFor(b.items);
+    const hot = me.role === "owner" ? b.items.filter((i) => ["Ready for Review", "Ready to Close"].includes(i.status)).length : b.items.filter((i) => i.status === "Ready for Review").length;
+    return `<a class="card store" href="#/p/${p.slug}">
+      <h3>${esc(p.name)}</h3><div class="meta">${esc(p.job_no || "")} &middot; ${esc(p.address || "")}</div>
+      <div class="nums"><div><b>${c.open}</b>open</div><div class="hot"><b>${hot}</b>${me.role === "owner" ? "to review" : "sub says done"}</div><div class="done"><b>${c.closed}</b>closed</div></div></a>`;
+  }).join("");
+  const allOpen = S.projects.reduce((n, p) => n + countsFor(S.boards[p.slug].items).open, 0);
+  shell(`
+    <div class="h"><div><h1>${me.role === "owner" ? "Your stores" : "Stores"}</h1><div class="sub">${allOpen} open item${allOpen === 1 ? "" : "s"} across ${S.projects.length} store${S.projects.length === 1 ? "" : "s"}</div></div></div>
+    <div class="grid">${cards || `<div class="empty">No stores yet.</div>`}</div>
+    <div class="stack" style="margin-top:18px">
+      ${me.role === "admin" ? `<a class="bigbtn" href="#/people">People &amp; links<small>Subs, the owner, and the link each one opens</small></a>` : ""}
+      <a class="bigbtn" href="#/process">How Punchline works<small>Pinned, proven, closed. The six steps.</small></a>
+    </div>`);
+}
+
+// ---------- board ----------
+async function renderBoard(slug) {
+  shell(loading(), { back: "Stores" });
+  let b; try { b = await loadBoard(slug, true); } catch (e) { return shell(`<div class="empty">${esc(e.message)}</div>`, { back: "Stores" }); }
+  document.title = `${b.project.name} · Punchline`;
+  const me = S.me;
+  const items = b.items;
+  const photoCount = (id) => b.photos.filter((p) => p.item_id === id).length;
+  const F = {
+    all: { label: "All", f: () => true },
+    needs: { label: me.role === "owner" ? "To review" : "Sub says done", f: (i) => me.role === "owner" ? ["Ready for Review", "Ready to Close"].includes(i.status) : i.status === "Ready for Review" },
+    open: { label: "Open", f: (i) => !["Closed", "Draft"].includes(i.status) },
+    withsub: { label: "With sub", f: (i) => ["Work Required", "Not Accepted", "Open"].includes(i.status) },
+    verified: { label: "Verified", f: (i) => i.status === "Ready to Close" },
+    closed: { label: "Closed", f: (i) => i.status === "Closed" },
+  };
+  if (me.role !== "admin") delete F.withsub;
+  if (!F[S.filter]) S.filter = "all";
+  let list = items.filter(F[S.filter].f);
+  if (S.type) list = list.filter((i) => i.type === S.type);
+  if (S.who) list = list.filter((i) => i.assignee_id === S.who);
+  const subs = b.parties.filter((p) => items.some((i) => i.assignee_id === p.id));
+  const rows = list.map((it) => `
+    <a class="item ${it.plan_id ? "pinned" : ""}" href="#/p/${slug}/i/${it.id}">
+      <div class="num">${it.number}</div>
+      <div><div class="t">${esc(it.title)}</div>
+        <div class="m">${stChip(it.status)}${tyChip(it.type)}${it.area ? `<span>${esc(it.area)}</span>` : ""}${it.assignee_id ? `<span class="who">${esc(partyName(b, it.assignee_id))}</span>` : `<span style="color:var(--flag);font-weight:600">unassigned</span>`}${photoCount(it.id) ? `<span class="cam">&#128247; ${photoCount(it.id)}</span>` : ""}${isOverdue(it) ? `<span style="color:var(--s-notacc);font-weight:700">overdue ${fmtD(it.due_date)}</span>` : it.due_date ? `<span>due ${fmtD(it.due_date)}</span>` : ""}</div>
+      </div></a>`).join("");
+  const c = countsFor(items);
+  shell(`
+    <div class="h"><div><h1>${esc(b.project.name)}</h1><div class="sub">${esc(b.project.job_no || "")} &middot; ${esc(b.project.address || "")}</div></div>
+      <div class="sub" style="text-align:right">${c.open} open<br>${c.closed} closed</div></div>
+    <div class="tabs"><a class="on" href="#/p/${slug}">List</a><a href="#/p/${slug}/plan">Plan</a><a href="#/p/${slug}/signoff">Sign-off</a></div>
+    <div class="filters">${Object.entries(F).map(([k, v]) => `<button class="fbtn ${S.filter === k ? "on" : ""}" onclick="S.filter='${k}';render()">${v.label}<span class="n">${items.filter(v.f).length}</span></button>`).join("")}
+      <select class="sel" onchange="S.type=this.value;render()"><option value="">Any type</option>${TYPES.map((t) => `<option ${S.type === t ? "selected" : ""}>${t}</option>`).join("")}</select>
+      ${me.role !== "sub" && subs.length ? `<select class="sel" onchange="S.who=this.value;render()"><option value="">Anyone</option>${subs.map((p) => `<option value="${p.id}" ${S.who === p.id ? "selected" : ""}>${esc(partyName(b, p.id))}</option>`).join("")}</select>` : ""}
+    </div>
+    <div class="card">${rows || `<div class="empty">Nothing here.</div>`}</div>
+    ${me.role === "admin" ? `<button class="fab" title="New item" onclick="newItem('${slug}')">+</button>` : ""}
+  `, { back: "Stores" });
+}
+
+// ---------- item ----------
+async function renderItem(slug, id) {
+  shell(loading(), { back: "List" });
+  const b = S.boards[slug] || await loadBoard(slug);
+  const it = b.items.find((i) => i.id === id);
+  if (!it) return shell(`<div class="empty">That item is not on your list.</div>`, { back: "List" });
+  document.title = `#${it.number} ${it.title} · Punchline`;
+  const me = S.me;
+  const photos = b.photos.filter((p) => p.item_id === id);
+  const before = photos.filter((p) => p.kind === "before"), after = photos.filter((p) => p.kind === "after");
+  const plan = b.plans.find((p) => p.id === it.plan_id);
+  const photoGrid = (arr, tag) => arr.map((p) => `<a href="${p.url}" target="_blank" rel="noopener"><img src="${p.url}" alt="${tag} photo" loading="lazy"><span class="tag">${tag}</span>${me.role === "admin" ? `<button class="del" title="Remove photo" onclick="event.preventDefault();delPhoto('${slug}','${p.id}')">&times;</button>` : ""}</a>`).join("");
+  // actions by role + status
+  const A = [];
+  const st = it.status;
+  if (me.role === "sub") {
+    if (["Open", "Work Required", "Not Accepted", "In Dispute"].includes(st)) {
+      A.push(`<button class="btn primary" onclick="addPhotos('${slug}','${id}','after')">&#128247; Add photo of the finished work</button>`);
+      A.push(`<button class="btn ok" onclick="move('${slug}','${id}','Ready for Review','Anything Alleato should know? (optional)')">&#10003; Mark complete, send for review</button>`);
+      if (st !== "In Dispute") A.push(`<button class="btn ghost" onclick="move('${slug}','${id}','In Dispute','Why are you disputing this item?',true)">Dispute this item</button>`);
+    }
+    if (st === "Ready for Review") A.push(`<div class="empty" style="padding:12px">Sent to Alleato for review. Add more photos any time.</div><button class="btn" onclick="addPhotos('${slug}','${id}','after')">&#128247; Add another photo</button>`);
+    if (["Ready to Close", "Closed"].includes(st)) A.push(`<div class="empty" style="padding:12px">${st === "Closed" ? "Accepted by the owner. Nothing more to do." : "Verified by Alleato, waiting on the owner."}</div>`);
+  }
+  if (me.role === "owner") {
+    if (["Ready for Review", "Ready to Close"].includes(st)) {
+      A.push(`<button class="btn ok" onclick="move('${slug}','${id}','Closed','Any note for the record? (optional)')">&#10003; Accept and close</button>`);
+      A.push(`<button class="btn warn" onclick="move('${slug}','${id}','Not Accepted','What still needs doing?',true)">Send it back</button>`);
+    } else if (st === "Closed") A.push(`<div class="empty" style="padding:12px">Closed ${fmtD(it.closed_at)}.</div>`);
+    else A.push(`<div class="empty" style="padding:12px">${PLAIN[st]}. You will see Accept here once the work is done and photographed.</div>`);
+  }
+  if (me.role === "admin") {
+    A.push(`<div class="btnrow">
+      <button class="btn" onclick="addPhotos('${slug}','${id}','before')">&#128247; Before</button>
+      <button class="btn" onclick="addPhotos('${slug}','${id}','after')">&#128247; After</button>
+      <a class="btn" href="#/p/${slug}/plan/${id}">&#128205; ${it.plan_id ? "Move pin" : "Pin on plan"}</a>
+      <button class="btn" onclick="editItem('${slug}','${id}')">&#9998; Edit</button></div>`);
+    const row2 = [];
+    if (["Open", "Draft", "Not Accepted", "In Dispute"].includes(st) && it.assignee_id) row2.push(`<button class="btn ink" onclick="move('${slug}','${id}','Work Required','Note to the sub (optional)')">Send to sub</button>`);
+    if (st === "Draft" && !it.assignee_id) row2.push(`<button class="btn ink" onclick="move('${slug}','${id}','Open','')">Publish</button>`);
+    if (["Ready for Review", "Work Required", "Open", "Not Accepted", "In Dispute"].includes(st)) row2.push(`<button class="btn ok" onclick="move('${slug}','${id}','Ready to Close','Verified on site? Add a note (optional)')">&#10003; Verified, ready for owner</button>`);
+    if (st === "Ready for Review") row2.push(`<button class="btn warn" onclick="move('${slug}','${id}','Not Accepted','What still needs doing?',true)">Send back to sub</button>`);
+    if (["Ready to Close", "Ready for Review"].includes(st)) row2.push(`<button class="btn" onclick="move('${slug}','${id}','Closed','Closing on the owner\\'s behalf? Say who accepted it.',true)">Close</button>`);
+    if (st === "Closed") row2.push(`<button class="btn ghost" onclick="move('${slug}','${id}','Work Required','Why is it being reopened?',true)">Reopen</button>`);
+    if (row2.length) A.push(`<div class="btnrow">${row2.join("")}</div>`);
+    if (st === "Draft") A.push(`<button class="btn ghost" style="color:var(--s-notacc)" onclick="delItem('${slug}','${id}')">Delete draft</button>`);
+  }
+  shell(`
+    <div class="card detail">
+      <div class="head"><div class="row"><span class="num">#${it.number} &middot; ${esc(b.project.name.toUpperCase())}</span>${stChip(st)}${tyChip(it.type)}${it.priority === "High" ? `<span class="chip type co">High priority</span>` : ""}</div>
+        <h1>${esc(it.title)}</h1>${it.detail ? `<div class="notes" style="margin-top:8px;color:var(--muted)">${esc(it.detail)}</div>` : ""}</div>
+      <div class="facts">
+        <div><small>Where</small>${esc(it.area || "See plan")}</div>
+        <div><small>Responsible</small>${it.assignee_id ? esc(partyFull(b, it.assignee_id)) : `<span style="color:var(--flag)">Unassigned</span>`}</div>
+        <div><small>Due</small>${it.due_date ? (isOverdue(it) ? `<span style="color:var(--s-notacc);font-weight:700">${fmtD(it.due_date)} overdue</span>` : fmtD(it.due_date)) : "No date set"}</div>
+        <div><small>Means</small>${esc(PLAIN[st])}</div>
+        ${it.trade ? `<div class="full"><small>Trade</small>${esc(it.trade)}</div>` : ""}
+      </div>
+      ${plan && it.pin_x != null ? `<div class="sec"><h3>On the plan <a class="lnk" href="#/p/${slug}/plan/${id}">Open plan</a></h3>
+        <a href="#/p/${slug}/plan/${id}" class="minimap" style="display:block"><img src="${plan.url}" alt="" style="object-position:${(it.pin_x * 100).toFixed(1)}% ${(it.pin_y * 100).toFixed(1)}%;object-fit:none;transform:scale(.55);transform-origin:center"><span class="pin" style="left:50%;top:50%;width:30px;height:38px">${pinSvg(it.number, STATUS_HEX[st])}</span></a></div>` : me.role === "admin" ? `<div class="sec"><h3>On the plan</h3><a class="btn sm" href="#/p/${slug}/plan/${id}">&#128205; Drop a pin so the sub can find it</a></div>` : ""}
+      ${it.notes && me.role !== "owner" ? `<div class="sec"><h3>Notes${me.role === "sub" ? " from Alleato" : ""}</h3><div class="notes">${esc(it.notes)}</div></div>` : ""}
+      <div class="sec"><h3>Photos <span style="font-weight:500;text-transform:none;letter-spacing:0">${before.length} before &middot; ${after.length} after</span></h3>
+        ${photos.length ? `<div class="photos">${photoGrid(before, "before")}${photoGrid(after, "after")}</div>` : `<div class="empty" style="padding:10px">No photos yet.${me.role === "sub" ? " Add one of the finished work and the owner can accept it from their desk." : ""}</div>`}</div>
+      <div class="sec"><div class="actions">${A.join("")}</div></div>
+      <div class="sec"><h3>History</h3><ul class="hist" id="hist"><li><span class="dot"></span><span class="meta">Loading</span></li></ul>
+        <div style="margin-top:12px;display:flex;gap:8px"><input class="in" id="cmt" placeholder="Add a comment" onkeydown="if(event.key==='Enter')comment('${slug}','${id}')"><button class="btn sm ink" onclick="comment('${slug}','${id}')">Post</button></div></div>
+    </div>`, { back: b.project.name });
+  loadHistory(id);
+}
+async function loadHistory(id) {
+  try {
+    const r = await api("history", { id });
+    const ul = $("#hist"); if (!ul) return;
+    ul.innerHTML = r.events.slice().reverse().map((e) => {
+      const who = e.parties ? `${e.parties.name}${e.parties.company ? ", " + e.parties.company : ""}` : "System";
+      let what = e.action;
+      if (e.action === "status") what = `${e.from_status} &#8594; <b>${e.to_status}</b>`;
+      else if (e.action === "created") what = `Created as <b>${e.to_status}</b>`;
+      else if (e.action === "comment") what = "Comment";
+      else if (e.action === "photo") what = e.note || "Photo added";
+      else if (e.action === "assigned") what = "Reassigned";
+      else if (e.action === "edited") what = "Edited";
+      return `<li><span class="dot ${e.action}"></span><div>${what}<div class="meta">${esc(who)} &middot; ${fmtDT(e.created_at)}</div>${e.note && e.action !== "photo" ? `<div class="note">${esc(e.note)}</div>` : ""}</div></li>`;
+    }).join("") || `<li><span class="dot"></span><span class="meta">No history.</span></li>`;
+  } catch (e) { toast(e.message, true); }
+}
+
+// ---------- actions ----------
+function sheet(html) {
+  const bg = document.createElement("div"); bg.className = "sheet-bg";
+  bg.innerHTML = `<div class="sheet"><div class="grab"></div>${html}</div>`;
+  bg.addEventListener("click", (e) => { if (e.target === bg) bg.remove(); });
+  document.body.appendChild(bg); return bg;
+}
+function ask(title, placeholder, required, okLabel = "Confirm") {
+  return new Promise((res) => {
+    const bg = sheet(`<h2>${esc(title)}</h2><textarea class="ta" id="asknote" placeholder="${esc(placeholder || "")}"></textarea>
+      <div class="btnrow" style="margin-top:12px"><button class="btn" id="askno">Cancel</button><button class="btn primary" id="askok">${esc(okLabel)}</button></div>`);
+    $("#askno", bg).onclick = () => { bg.remove(); res(null); };
+    $("#askok", bg).onclick = () => { const v = $("#asknote", bg).value.trim(); if (required && !v) { toast("A note is needed here", true); return; } bg.remove(); res(v); };
+    setTimeout(() => $("#asknote", bg).focus(), 50);
+  });
+}
+async function move(slug, id, to, prompt, required) {
+  let note = "";
+  if (prompt) { note = await ask(prompt, "", required, to); if (note === null) return; }
+  try { await api("transition", { id, to, note }); toast(`Now: ${to}`); await loadBoard(slug, true); render(); }
+  catch (e) { toast(e.message, true); }
+}
+async function comment(slug, id) {
+  const el = $("#cmt"); const note = el.value.trim(); if (!note) return;
+  try { await api("comment", { id, note }); el.value = ""; loadHistory(id); } catch (e) { toast(e.message, true); }
+}
+async function delItem(slug, id) { if (!confirm("Delete this draft?")) return; try { await api("delete", { id }); await loadBoard(slug, true); go(`#/p/${slug}`); } catch (e) { toast(e.message, true); } }
+async function delPhoto(slug, pid) { if (!confirm("Remove this photo?")) return; try { await api("delete_photo", { photo_id: pid }); await loadBoard(slug, true); render(); } catch (e) { toast(e.message, true); } }
+
+function shrink(file, max = 1600, q = 0.82) {
+  return new Promise((res, rej) => {
+    const img = new Image(); const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const s = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement("canvas"); c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url); res(c.toDataURL("image/jpeg", q));
+    };
+    img.onerror = () => rej(new Error("Could not read that photo"));
+    img.src = url;
+  });
+}
+function addPhotos(slug, id, kind) {
+  const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*"; inp.multiple = true;
+  if (kind === "after" && S.me.role === "sub") inp.capture = "environment";
+  inp.onchange = async () => {
+    const files = [...inp.files]; if (!files.length) return;
+    let n = 0;
+    for (const f of files) {
+      try { toast(`Uploading ${++n} of ${files.length}`); const data = await shrink(f); await api("upload", { id, kind, data }); }
+      catch (e) { toast(e.message, true); }
+    }
+    toast(`${n} photo${n === 1 ? "" : "s"} added`); await loadBoard(slug, true); render();
+  };
+  inp.click();
+}
+
+function itemForm(b, it = {}) {
+  const subs = b.parties.filter((p) => p.role !== "owner");
+  return `
+    <div class="field"><label>What needs doing</label><textarea class="ta" id="f_title" style="min-height:60px">${esc(it.title || "")}</textarea></div>
+    <div class="two"><div class="field"><label>Type</label><select class="in" id="f_type">${TYPES.map((t) => `<option ${it.type === t ? "selected" : ""}>${t}</option>`).join("")}</select></div>
+      <div class="field"><label>Room / area</label><input class="in" id="f_area" value="${esc(it.area || "")}" placeholder="SALES FLOOR"></div></div>
+    <div class="two"><div class="field"><label>Responsible</label><select class="in" id="f_who"><option value="">Unassigned</option>${subs.map((p) => `<option value="${p.id}" ${it.assignee_id === p.id ? "selected" : ""}>${esc(p.company && p.role === "sub" ? p.company + " (" + p.name + ")" : p.name)}</option>`).join("")}</select></div>
+      <div class="field"><label>Due</label><input class="in" type="date" id="f_due" value="${esc(it.due_date || "")}"></div></div>
+    <div class="two"><div class="field"><label>Trade</label><input class="in" id="f_trade" value="${esc(it.trade || "")}" placeholder="Electrical"></div>
+      <div class="field"><label>Priority</label><select class="in" id="f_pri">${["Low", "Normal", "High"].map((p) => `<option ${(it.priority || "Normal") === p ? "selected" : ""}>${p}</option>`).join("")}</select></div></div>
+    <div class="field"><label>Detail for the sub (they see this)</label><textarea class="ta" id="f_detail">${esc(it.detail || "")}</textarea></div>
+    <div class="field"><label>Alleato notes (owner does not see)</label><textarea class="ta" id="f_notes">${esc(it.notes || "")}</textarea></div>`;
+}
+function readForm(bg) {
+  return { title: $("#f_title", bg).value.trim(), type: $("#f_type", bg).value, area: $("#f_area", bg).value.trim(), assignee_id: $("#f_who", bg).value || null,
+    due_date: $("#f_due", bg).value || null, trade: $("#f_trade", bg).value.trim(), priority: $("#f_pri", bg).value, detail: $("#f_detail", bg).value.trim(), notes: $("#f_notes", bg).value.trim() };
+}
+async function newItem(slug) {
+  const b = await loadBoard(slug);
+  const bg = sheet(`<h2>New item &middot; ${esc(b.project.name)}</h2>${itemForm(b)}
+    <div class="btnrow"><button class="btn" id="c">Cancel</button><button class="btn" id="d">Save as draft</button><button class="btn primary" id="s">Save &amp; send</button></div>`);
+  $("#c", bg).onclick = () => bg.remove();
+  const save = async (status) => {
+    const f = readForm(bg); if (!f.title) return toast("Say what needs doing", true);
+    try { const r = await api("create", { project_id: b.project.id, ...f, status: status || (f.assignee_id ? "Work Required" : "Open") }); bg.remove(); await loadBoard(slug, true); go(`#/p/${slug}/i/${r.item.id}`); toast(`#${r.item.number} saved`); }
+    catch (e) { toast(e.message, true); }
+  };
+  $("#d", bg).onclick = () => save("Draft"); $("#s", bg).onclick = () => save();
+}
+async function editItem(slug, id) {
+  const b = await loadBoard(slug); const it = b.items.find((i) => i.id === id);
+  const bg = sheet(`<h2>Edit #${it.number}</h2>${itemForm(b, it)}<div class="btnrow"><button class="btn" id="c">Cancel</button><button class="btn primary" id="s">Save</button></div>`);
+  $("#c", bg).onclick = () => bg.remove();
+  $("#s", bg).onclick = async () => { const f = readForm(bg); try { await api("update", { id, ...f }); bg.remove(); await loadBoard(slug, true); render(); toast("Saved"); } catch (e) { toast(e.message, true); } };
+}
+
+// ---------- plan ----------
+let planZoom = 1;
+async function renderPlan(slug, placeId) {
+  shell(loading(), { back: "List", wide: true });
+  const b = S.boards[slug] || await loadBoard(slug);
+  document.title = `${b.project.name} plan · Punchline`;
+  const me = S.me;
+  const plans = b.plans;
+  if (!plans.length) return shell(`<div class="tabs"><a href="#/p/${slug}">List</a><a class="on" href="#/p/${slug}/plan">Plan</a><a href="#/p/${slug}/signoff">Sign-off</a></div><div class="empty">No floor plan loaded for ${esc(b.project.name)} yet.</div>`, { back: b.project.name, wide: true });
+  const plan = plans[0];
+  const placing = placeId && me.role === "admin" ? b.items.find((i) => i.id === placeId) : null;
+  const pins = b.items.filter((i) => i.plan_id === plan.id && i.pin_x != null && i.status !== "Draft" || (i.id === placeId && i.pin_x != null));
+  shell(`
+    <div class="tabs noprint"><a href="#/p/${slug}">List</a><a class="on" href="#/p/${slug}/plan">Plan</a><a href="#/p/${slug}/signoff">Sign-off</a></div>
+    <div class="planwrap">
+      ${placing ? `<div class="planhint">Tap the plan where #${placing.number} is<button onclick="go('#/p/${slug}/i/${placing.id}')">Done</button></div>` : ""}
+      <div class="planscroll" id="ps"><div class="planstage" id="stage" style="width:${plan.width}px;height:${plan.height}px">
+        <img src="${plan.url}" width="${plan.width}" height="${plan.height}" alt="${esc(plan.name)}" draggable="false">
+        ${pins.map((i) => `<a class="pin ${i.id === placeId ? "lg" : ""}" href="#/p/${slug}/i/${i.id}" data-id="${i.id}" style="left:${i.pin_x * 100}%;top:${i.pin_y * 100}%" title="#${i.number} ${esc(i.title)}" onclick="if(window.__placing){event.preventDefault()}else{event.preventDefault();showPop(event,'${slug}','${i.id}')}">${pinSvg(i.number, STATUS_HEX[i.status])}</a>`).join("")}
+      </div></div>
+      <div class="planctl"><button onclick="zoomPlan(1.4)">+</button><button onclick="zoomPlan(1/1.4)">&minus;</button><button onclick="fitPlan()" style="font-size:12px">fit</button></div>
+    </div>
+    <div class="planlegend">${["Work Required", "Ready for Review", "Not Accepted", "Ready to Close", "Closed"].map((s) => `<span><i style="background:${STATUS_HEX[s]}"></i>${s}</span>`).join("")}<span><i style="background:${STATUS_HEX["Open"]}"></i>Open / unassigned</span></div>
+    ${!placing && me.role === "admin" ? `<div class="sub" style="margin-top:8px">Open an item and tap "Pin on plan" to place it. ${b.items.filter((i) => i.pin_x == null && i.status !== "Closed").length} open items have no pin yet.</div>` : ""}
+  `, { back: b.project.name, wide: true });
+  window.__placing = !!placing;
+  const stage = $("#stage"), ps = $("#ps");
+  fitPlan();
+  if (placing) {
+    stage.style.cursor = "crosshair";
+    stage.addEventListener("click", async (e) => {
+      const r = stage.getBoundingClientRect();
+      const x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+      try { await api("update", { id: placing.id, plan_id: plan.id, pin_x: +x.toFixed(4), pin_y: +y.toFixed(4) }); await loadBoard(slug, true); toast(`#${placing.number} pinned`); renderPlan(slug, placeId); }
+      catch (err) { toast(err.message, true); }
+    });
+    if (placing.pin_x != null) setTimeout(() => centerOn(placing.pin_x, placing.pin_y), 60);
+  }
+  ps.addEventListener("dblclick", (e) => { if (!window.__placing) zoomPlan(1.6, e); });
+}
+function fitPlan() {
+  const stage = $("#stage"), ps = $("#ps"); if (!stage) return;
+  const w = parseFloat(stage.style.width), h = parseFloat(stage.style.height);
+  planZoom = Math.min(ps.clientWidth / w, ps.clientHeight / h);
+  applyZoom();
+}
+function applyZoom() {
+  const stage = $("#stage"); const w = parseFloat(stage.style.width), h = parseFloat(stage.style.height);
+  stage.style.transform = `scale(${planZoom})`;
+  // reserve scroll area
+  let sp = stage.parentElement.querySelector(".spacer"); if (!sp) { sp = document.createElement("div"); sp.className = "spacer"; stage.parentElement.appendChild(sp); }
+  sp.style.width = (w * planZoom) + "px"; sp.style.height = (h * planZoom) + "px"; sp.style.position = "absolute"; sp.style.left = 0; sp.style.top = 0; sp.style.pointerEvents = "none";
+  stage.style.position = "absolute";
+  for (const p of stage.querySelectorAll(".pin")) p.style.transform = `translate(-50%,-100%) scale(${1 / planZoom})`;
+  for (const p of stage.querySelectorAll(".pin")) p.style.transformOrigin = "50% 100%";
+}
+function zoomPlan(f, e) {
+  const ps = $("#ps"); const old = planZoom;
+  planZoom = Math.max(0.05, Math.min(4, planZoom * f));
+  const r = ps.getBoundingClientRect();
+  const cx = e ? e.clientX - r.left : ps.clientWidth / 2, cy = e ? e.clientY - r.top : ps.clientHeight / 2;
+  const px = (ps.scrollLeft + cx) / old, py = (ps.scrollTop + cy) / old;
+  applyZoom();
+  ps.scrollLeft = px * planZoom - cx; ps.scrollTop = py * planZoom - cy;
+}
+function centerOn(x, y) {
+  const ps = $("#ps"), stage = $("#stage"); const w = parseFloat(stage.style.width), h = parseFloat(stage.style.height);
+  planZoom = Math.max(planZoom, 0.6); applyZoom();
+  ps.scrollLeft = x * w * planZoom - ps.clientWidth / 2; ps.scrollTop = y * h * planZoom - ps.clientHeight / 2;
+}
+function showPop(e, slug, id) {
+  const b = S.boards[slug]; const it = b.items.find((i) => i.id === id);
+  document.querySelectorAll(".pop").forEach((p) => p.remove());
+  const wrap = $(".planwrap"); const r = wrap.getBoundingClientRect();
+  const pop = document.createElement("div"); pop.className = "pop";
+  pop.innerHTML = `<b>#${it.number} ${esc(it.title)}</b>${stChip(it.status)} ${tyChip(it.type)}<div style="margin-top:6px;color:var(--muted)">${esc(it.area || "")}${it.assignee_id ? " · " + esc(partyName(b, it.assignee_id)) : ""}</div><a class="btn sm ink" style="margin-top:8px" href="#/p/${slug}/i/${it.id}">Open item</a>`;
+  let x = e.clientX - r.left + 10, y = e.clientY - r.top + 10;
+  pop.style.left = Math.min(x, wrap.clientWidth - 270) + "px"; pop.style.top = Math.min(y, wrap.clientHeight - 140) + "px";
+  wrap.appendChild(pop);
+  setTimeout(() => document.addEventListener("click", () => pop.remove(), { once: true }), 10);
+}
+
+// ---------- sub: my work ----------
+async function renderWork() {
+  shell(loading());
+  document.title = "Your work · Punchline";
+  let r; try { r = await api("mywork"); } catch (e) { return shell(`<div class="empty">${esc(e.message)}</div>`); }
+  S.work = r.items;
+  const byProj = {};
+  for (const it of r.items) (byProj[it.projects.slug] ||= { p: it.projects, items: [] }).items.push(it);
+  const todo = r.items.filter((i) => ["Open", "Work Required", "Not Accepted", "In Dispute"].includes(i.status)).length;
+  const sections = Object.values(byProj).map(({ p, items }) => `
+    <div class="group">${esc(p.name)} &middot; ${esc(p.address || "")}</div>
+    <div class="card">${items.map((it) => `
+      <a class="item ${it.plan_id ? "pinned" : ""}" href="#/p/${p.slug}/i/${it.id}"><div class="num">${it.number}</div>
+        <div><div class="t">${esc(it.title)}</div><div class="m">${stChip(it.status)}${tyChip(it.type)}${it.area ? `<span>${esc(it.area)}</span>` : ""}${isOverdue(it) ? `<span style="color:var(--s-notacc);font-weight:700">overdue</span>` : it.due_date ? `<span>due ${fmtD(it.due_date)}</span>` : ""}</div></div></a>`).join("")}</div>`).join("");
+  shell(`<div class="h"><div><h1>Your work</h1><div class="sub">${todo} item${todo === 1 ? "" : "s"} waiting on you. Finish it, photograph it, mark it complete. That is the whole job.</div></div></div>
+    ${sections || `<div class="empty">Nothing assigned to you right now.</div>`}
+    <div class="stack" style="margin-top:18px"><a class="bigbtn" href="#/process">How this works<small>What happens after you mark an item complete</small></a></div>`);
+}
+
+// ---------- people (admin) ----------
+async function renderPeople() {
+  if (S.me.role !== "admin") return go("");
+  shell(loading(), { back: "Stores" });
+  const b = await loadBoard(S.projects[0].slug, true);
+  document.title = "People · Punchline";
+  const order = { admin: 0, owner: 1, sub: 2 };
+  const people = b.parties.slice().sort((a, c) => order[a.role] - order[c.role] || (a.company || a.name).localeCompare(c.company || c.name));
+  const cnt = (pid) => S.projects.reduce((n, p) => n + (S.boards[p.slug]?.items || []).filter((i) => i.assignee_id === pid && i.status !== "Closed").length, 0);
+  shell(`
+    <div class="h"><div><h1>People &amp; links</h1><div class="sub">Each person opens Punchline with their own link. Send it by text or email once; it keeps working.</div></div>
+      <button class="btn sm ink" onclick="editPerson()">+ Person</button></div>
+    <div class="card">${people.map((p) => `
+      <div class="person"><div class="top"><div><div class="nm">${esc(p.name)}</div><div class="co">${esc(p.company || "")}${p.role === "sub" && cnt(p.id) ? ` &middot; ${cnt(p.id)} open` : ""}</div>
+        <div class="ct">${[p.email, p.phone].filter(Boolean).map(esc).join(" &middot; ")}</div></div><span class="role ${p.role}">${p.role === "admin" ? "Alleato" : p.role}</span></div>
+        <div class="lnk"><button class="btn sm" onclick="copy(linkFor('${esc(p.token)}'))">Copy link</button>
+          ${p.email ? `<a class="btn sm" href="mailto:${esc(p.email)}?subject=${encodeURIComponent("Your Punchline link")}&body=${encodeURIComponent(`${p.name.split(" ")[0]},\n\nYour punch items for the Goodwill stores are here: ${linkFor(p.token)}\n\nOpen it on your phone. Finish an item, add a photo of the finished work, and tap Mark complete. The owner accepts it from the photo.\n\nRegards,\n${S.me.name}`)}">Email it</a>` : ""}
+          ${p.phone ? `<a class="btn sm" href="sms:${esc(p.phone.replace(/[^\d+]/g, ""))}?&body=${encodeURIComponent(`Your Goodwill punch items: ${linkFor(p.token)}`)}">Text it</a>` : ""}
+          <button class="btn sm ghost" onclick="editPerson('${p.id}')">Edit</button>
+          <button class="btn sm ghost" onclick="resetLink('${p.id}')" title="Old link stops working">New link</button></div></div>`).join("")}</div>`, { back: "Stores" });
+}
+async function editPerson(id) {
+  const b = S.boards[S.projects[0].slug]; const p = id ? b.parties.find((x) => x.id === id) : { role: "sub", project_ids: [] };
+  const bg = sheet(`<h2>${id ? "Edit person" : "New person"}</h2>
+    <div class="two"><div class="field"><label>Name</label><input class="in" id="p_name" value="${esc(p.name || "")}"></div><div class="field"><label>Company</label><input class="in" id="p_co" value="${esc(p.company || "")}"></div></div>
+    <div class="two"><div class="field"><label>Role</label><select class="in" id="p_role">${["sub", "owner", "admin"].map((r) => `<option value="${r}" ${p.role === r ? "selected" : ""}>${r === "admin" ? "Alleato (full access)" : r === "owner" ? "Owner (accepts work)" : "Subcontractor"}</option>`).join("")}</select></div>
+      <div class="field"><label>Phone</label><input class="in" id="p_phone" value="${esc(p.phone || "")}"></div></div>
+    <div class="field"><label>Email</label><input class="in" id="p_email" value="${esc(p.email || "")}"></div>
+    <div class="field"><label>Stores (owner only)</label>${S.projects.map((pr) => `<label style="display:inline-flex;gap:6px;align-items:center;margin:4px 12px 4px 0;text-transform:none;letter-spacing:0;font-weight:500;color:var(--ink)"><input type="checkbox" class="p_pr" value="${pr.id}" ${(p.project_ids || []).includes(pr.id) ? "checked" : ""}>${esc(pr.name)}</label>`).join("")}</div>
+    <div class="btnrow"><button class="btn" id="c">Cancel</button><button class="btn primary" id="s">Save</button></div>`);
+  $("#c", bg).onclick = () => bg.remove();
+  $("#s", bg).onclick = async () => {
+    const row = { id, name: $("#p_name", bg).value.trim(), company: $("#p_co", bg).value.trim(), role: $("#p_role", bg).value, phone: $("#p_phone", bg).value.trim(), email: $("#p_email", bg).value.trim(), project_ids: [...bg.querySelectorAll(".p_pr:checked")].map((c) => c.value) };
+    if (!row.name) return toast("Name needed", true);
+    try { await api("party_save", row); bg.remove(); S.boards = {}; renderPeople(); toast("Saved"); } catch (e) { toast(e.message, true); }
+  };
+}
+async function resetLink(id) { if (!confirm("Make a new link? The old one stops working.")) return; try { await api("party_reset", { id }); S.boards = {}; renderPeople(); toast("New link made"); } catch (e) { toast(e.message, true); } }
+
+// ---------- sign-off ----------
+async function renderSignoff(slug) {
+  shell(loading(), { back: "List" });
+  const b = await loadBoard(slug, true);
+  document.title = `${b.project.name} sign-off · Punchline`;
+  const me = S.me; const items = b.items.filter((i) => i.status !== "Draft");
+  const open = items.filter((i) => i.status !== "Closed");
+  const sub = b.signoffs.filter((s) => s.kind === "substantial"), fin = b.signoffs.filter((s) => s.kind === "final");
+  const canSign = ["owner", "admin"].includes(me.role);
+  shell(`
+    <div class="tabs"><a href="#/p/${slug}">List</a><a href="#/p/${slug}/plan">Plan</a><a class="on" href="#/p/${slug}/signoff">Sign-off</a></div>
+    <div class="h"><div><h1>${esc(b.project.name)} sign-off</h1><div class="sub">${open.length ? `${open.length} of ${items.length} items still open` : `All ${items.length} items closed`}</div></div>
+      <a class="btn sm" href="#/p/${slug}/print">Print the form</a></div>
+    <div class="stack">
+      <div class="card" style="padding:16px"><h2 style="font-size:17px">Substantial completion</h2><div class="sub" style="margin:4px 0 10px">The work is substantially complete and the owner can occupy and use it. Open items get finished by their due dates.</div>
+        ${sub.map((s) => `<div class="chip type" style="margin:0 6px 6px 0">&#10003; ${esc(s.signer_name)} &middot; ${fmtD(s.signed_at)}</div>`).join("")}
+        ${canSign ? `<div><button class="btn ${sub.length ? "" : "ink"}" onclick="sign('${slug}','substantial')">Sign as ${esc(me.name)}</button></div>` : ""}</div>
+      <div class="card" style="padding:16px"><h2 style="font-size:17px">Final acceptance</h2><div class="sub" style="margin:4px 0 10px">Every item closed and verified. The owner accepts the work as complete per the contract.${open.length ? ` <b>Not yet: ${open.length} open.</b>` : ""}</div>
+        ${fin.map((s) => `<div class="chip type" style="margin:0 6px 6px 0">&#10003; ${esc(s.signer_name)} &middot; ${fmtD(s.signed_at)}</div>`).join("")}
+        ${canSign ? `<div><button class="btn ${open.length ? "" : "ok"}" ${open.length ? "disabled" : ""} onclick="sign('${slug}','final')">Sign as ${esc(me.name)}</button></div>` : ""}</div>
+      <div class="card"><div class="sec"><h3>Line items</h3>
+        <div class="tw"><table style="width:100%;border-collapse:collapse;font-size:13px">
+          <tr style="color:var(--muted);text-align:left"><th style="padding:4px">#</th><th>Type</th><th>Item</th><th>Status</th></tr>
+          ${items.map((i) => `<tr style="border-top:1px solid var(--line)"><td style="padding:6px 4px;font-weight:700">${i.number}</td><td>${tyChip(i.type)}</td><td style="padding:6px 4px">${esc(i.title)}<div style="color:var(--muted);font-size:12px">${esc(i.area || "")}${i.assignee_id ? " · " + esc(partyName(b, i.assignee_id)) : ""}</div></td><td>${stChip(i.status)}</td></tr>`).join("")}
+        </table></div></div></div>
+    </div>`, { back: b.project.name });
+}
+async function sign(slug, kind) {
+  const b = S.boards[slug];
+  const bg = sheet(`<h2>${kind === "final" ? "Final acceptance" : "Substantial completion"} &middot; ${esc(b.project.name)}</h2>
+    <p style="font-size:14px;color:var(--muted);margin:0 0 12px">${kind === "final" ? "All items on the punch list are complete and verified. The owner accepts the work as complete per the contract." : "The work is substantially complete and the owner can occupy and use it for its intended purpose. Open items will be completed by the responsible parties by their due dates."}</p>
+    <div class="field"><label>Type your full name to sign</label><input class="in" id="sg_name" value="${esc(S.me.name)}"></div>
+    <div class="field"><label>Note (optional)</label><input class="in" id="sg_note"></div>
+    <div class="btnrow"><button class="btn" id="c">Cancel</button><button class="btn ok" id="s">Sign</button></div>`);
+  $("#c", bg).onclick = () => bg.remove();
+  $("#s", bg).onclick = async () => { try { await api("signoff", { project_id: b.project.id, kind, name: $("#sg_name", bg).value, note: $("#sg_note", bg).value }); bg.remove(); toast("Signed"); renderSignoff(slug); } catch (e) { toast(e.message, true); } };
+}
+
+// ---------- print (the sign-off form, from live data) ----------
+async function renderPrint(slug) {
+  shell(loading(), { back: "Sign-off" });
+  const b = await loadBoard(slug, true);
+  document.title = `${b.project.name} Final Punch Sign-Off`;
+  const items = b.items.filter((i) => i.status !== "Draft");
+  const hist = {};
+  await Promise.all(items.map(async (i) => { try { hist[i.id] = (await api("history", { id: i.id })).events; } catch { hist[i.id] = []; } }));
+  const when = (i, to) => { const e = (hist[i.id] || []).filter((x) => x.action === "status" && x.to_status === to).pop(); return e ? fmtD(e.created_at) : ""; };
+  const doneDate = (i) => when(i, "Ready for Review") || when(i, "Ready to Close") || when(i, "Closed");
+  const verDate = (i) => when(i, "Ready to Close") || (i.status === "Closed" ? when(i, "Closed") : "");
+  const sub = b.signoffs.filter((s) => s.kind === "substantial").pop(), fin = b.signoffs.filter((s) => s.kind === "final").pop();
+  const p = b.project;
+  const attendees = b.parties.filter((x) => x.role !== "sub");
+  const rows = items.map((i) => `<tr><td>${i.number}</td><td>${esc(i.type)}</td><td>${esc(i.area || "")}</td><td>${esc(i.title)}</td><td>${esc(partyName(b, i.assignee_id))}</td><td>${esc(i.status)}</td><td>${doneDate(i) ? "&#10003; " + doneDate(i) : ""}</td><td>${verDate(i) ? "&#10003; " + verDate(i) : ""}</td><td>${i.status === "Closed" ? "&#10003; " + fmtD(i.closed_at) : ""}</td></tr>`).join("");
+  shell(`
+    <div class="noprint btnrow" style="margin-bottom:14px"><button class="btn ink" onclick="window.print()">Print / save as PDF</button><button class="btn" onclick="exportCsv('${slug}')">Download CSV</button></div>
+    <div class="screen-doc"><div class="doc">
+      <div class="tl"><div><h1>FINAL PUNCH LIST &amp; SIGN-OFF</h1><div>${esc(p.name)} &nbsp;|&nbsp; Job ${esc(p.job_no || "")}</div></div><div style="text-align:right;font-size:11px">Punchline<br>${new Date().toLocaleDateString()}</div></div>
+      <h2>Project information</h2>
+      <div class="info"><div><small>Project name</small>Goodwill Store Remodel - ${esc(p.name)}</div><div><small>Job no.</small>${esc(p.job_no || "")}</div>
+        <div><small>Site address</small>${esc(p.address || "")}</div><div><small>Owner</small>${esc(p.owner_name || "")}</div>
+        <div><small>Owner's representative</small>${esc(p.owner_rep || "")}</div><div><small>Alleato project manager</small>${esc(p.alleato_pm || "")}</div>
+        <div><small>Alleato field lead</small>${esc(p.field_lead || "")}</div><div><small>Items</small>${items.length} total, ${items.filter((i) => i.status === "Closed").length} closed</div></div>
+      <h2>Attendees / parties</h2>
+      <table><tr><th>Name</th><th>Company</th><th>Role</th><th>Phone / email</th></tr>${attendees.map((a) => `<tr><td>${esc(a.name)}</td><td>${esc(a.company || "")}</td><td>${a.role === "owner" ? "Owner's Representative" : "Alleato Group"}</td><td>${esc([a.phone, a.email].filter(Boolean).join(" / "))}</td></tr>`).join("")}</table>
+      <h2>Substantial completion</h2>
+      <div class="box">The undersigned agree the work is substantially complete and the owner can occupy and use it for its intended purpose. All open items on the attached punch list will be completed by the responsible parties by their due dates.</div>
+      <div class="sig"><div><b>Owner's representative</b><br>${sub && sub.signer_name ? `Signed electronically in Punchline by ${esc(sub.signer_name)} on ${fmtD(sub.signed_at)}` : "Signature / printed name / date"}</div><div><b>Alleato Group project manager</b><br>Signature / printed name / date</div></div>
+      <h2>Final acceptance</h2>
+      <div class="box">All items on the attached punch list are complete and verified by Alleato, and all closeout deliverables have been received. The owner accepts the work as complete per the contract.</div>
+      <div class="sig"><div><b>Owner's representative</b><br>${fin && fin.signer_name ? `Signed electronically in Punchline by ${esc(fin.signer_name)} on ${fmtD(fin.signed_at)}` : "Signature / printed name / date"}</div><div><b>Alleato Group project manager</b><br>Signature / printed name / date</div></div>
+      <div class="pg"></div>
+      <h2>Punch list - line items</h2>
+      <p style="font-size:9pt">Punch = ties directly to an originally contracted scope item. C/O = not in the original scope, or an owner-requested change to completed contract work. Orig Scope - Gated = contracted scope still open, waiting on owner action or material. Done = sub marked complete with photo. Verified = Alleato verified. Owner = owner accepted in Punchline.</p>
+      <div class="tw"><table><tr><th>#</th><th>Type</th><th>Room / area</th><th>Work to be performed</th><th>Responsible</th><th>Status</th><th>Done</th><th>Verified</th><th>Owner</th></tr>${rows}</table></div>
+      <div class="foot">Alleato Group &nbsp;|&nbsp; 8383 Craig Street, Suite 150, Indianapolis, IN 46250 &nbsp;|&nbsp; www.alleatogroup.com &nbsp;&middot;&nbsp; Generated by Punchline with photo record on file for every closed item.</div>
+    </div></div>`, { back: "Sign-off" });
+}
+function exportCsv(slug) {
+  const b = S.boards[slug];
+  const cols = ["number", "type", "area", "title", "responsible", "status", "due_date", "trade", "photos", "closed_at", "notes"];
+  const lines = [cols.join(",")].concat(b.items.map((i) => cols.map((c) => { let v = c === "responsible" ? partyFull(b, i.assignee_id) : c === "photos" ? b.photos.filter((p) => p.item_id === i.id).length : i[c] ?? ""; return `"${String(v).replace(/"/g, '""')}"`; }).join(",")));
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([lines.join("\n")], { type: "text/csv" })); a.download = `${b.project.name}-punch-${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+}
+
+// ---------- process ----------
+function renderProcess() {
+  document.title = "How it works · Punchline";
+  const me = S.me;
+  shell(`
+    <div class="h"><div><h1>How Punchline works</h1><div class="sub">Pinned. Proven. Closed. The owner never has to come back out to look.</div></div></div>
+    <div class="card" style="padding:4px 16px">
+      <ol class="steps">
+        <li><b>Walk it, pin it</b><p>Alleato walks the store with the owner and logs each item: what, where, which type (Punch, C/O, or Orig Scope - Gated), and drops a pin on the floor plan so anyone can find it without a phone call.</p></li>
+        <li><b>Send it to the sub</b><p>Each item is assigned to the responsible sub. The sub gets one link that shows only their items across every store, with the pin, the notes and any before photos.</p></li>
+        <li><b>Sub does the work, photographs it</b><p>From their phone, on site: finish the item, take a photo of the finished work, tap Mark complete. No photo, no completion. Disputes get a note and go straight back to Alleato.</p></li>
+        <li><b>Alleato verifies</b><p>Alleato checks the photo (or the site) and marks it verified, or sends it back to the sub with what is still missing. Every move is logged with who and when.</p></li>
+        <li><b>Owner accepts from their desk</b><p>The owner opens their link, sees before and after side by side, and accepts or sends it back with a note. Accepting closes the item for good.</p></li>
+        <li><b>Sign off and file</b><p>When every item is closed, the owner signs final acceptance in the app. Punchline prints the Final Punch List &amp; Sign-Off form from the live record, with a photo on file for each line, and it goes in the job folder.</p></li>
+      </ol>
+    </div>
+    <div class="card" style="padding:16px;margin-top:12px"><h2 style="font-size:16px">Status words</h2>
+      <div class="flow">${["Open", "Work Required", "Ready for Review", "Ready to Close", "Closed"].map((s, i, a) => stChip(s) + (i < a.length - 1 ? `<span class="arrow">&#8594;</span>` : "")).join("")}</div>
+      <div class="sub" style="margin-top:8px">Side paths: ${stChip("Not Accepted")} sends an item back to the sub with a note; ${stChip("In Dispute")} is the sub saying "not mine" and Alleato decides.</div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:12px">${STATUSES.map((s) => `<tr style="border-top:1px solid var(--line)"><td style="padding:6px 0">${stChip(s)}</td><td style="padding:6px 8px;color:var(--muted)">${esc(PLAIN[s])}</td></tr>`).join("")}</table></div>
+    <div class="card" style="padding:16px;margin-top:12px"><h2 style="font-size:16px">The three types</h2>
+      <p style="font-size:14px;line-height:1.5;margin:8px 0 0"><b>Punch</b> ties directly to an originally contracted scope item: correcting or finishing contract work. <b>C/O</b> is not in the original scope, or an owner-requested change to contract work already done; it is priced before it is worked. <b>Orig Scope - Gated</b> is contracted scope still open because it is waiting on an owner action or material.</p></div>
+  `, { back: me.role === "sub" ? "Your work" : "Stores" });
+}
+
+boot();
+</script>
+</body>
+</html>
