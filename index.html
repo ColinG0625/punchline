@@ -254,6 +254,7 @@ textarea.ta{min-height:76px;resize:vertical}
 <script>
 // ---------- config ----------
 const API = "https://wwwtpeeywpdiazhwzwlr.supabase.co/functions/v1/api";
+const BUILD = "20261027-131706"; // stamped by tools/publish.py
 const STATUSES = ["Draft","Open","Work Required","In Dispute","Ready for Review","Not Accepted","Ready to Close","Closed","Removed"];
 const JP_STATUS = {"Draft":0,"Open":0,"Work Required":0,"In Dispute":0,"Not Accepted":0,"Ready for Review":1,"Ready to Close":1,"Closed":2,"Removed":2};
 const JP_PROJECT = {};
@@ -316,8 +317,18 @@ function toast(msg, err) { let t = $(".toast"); if (!t) { t = document.createEle
 async function api(op, args = {}) {
   const r = await fetch(API, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ op, k: S.k, ...args }) });
   const j = await r.json().catch(() => ({ error: "bad response" }));
+  checkVersion(j && j._v);
   if (!r.ok || j.error) { if (r.status === 401) { S.me = null; } throw new Error(j.error || `HTTP ${r.status}`); }
   return j;
+}
+// A newer page is published: reload once per version so phones never keep a stale copy. No loop: the version is remembered.
+function checkVersion(v) {
+  if (!v || v === "dev" || BUILD === "__BUILD__" || v === BUILD) return;
+  let done = null; try { done = sessionStorage.getItem("pl_reloaded_for"); } catch {}
+  if (done === v) return;
+  try { sessionStorage.setItem("pl_reloaded_for", v); } catch {}
+  toast("Updating to the latest version");
+  setTimeout(() => location.replace(location.pathname + "?v=" + encodeURIComponent(v) + location.hash), 400);
 }
 function partyName(board, id) { const p = (board?.parties || []).find((x) => x.id === id); return p ? (p.company && p.role === "sub" ? p.company : p.name) : ""; }
 function partyFull(board, id) { const p = (board?.parties || []).find((x) => x.id === id); return p ? [p.name, p.company].filter(Boolean).join(", ") : ""; }
@@ -595,7 +606,7 @@ async function renderItem(slug, id) {
       ${it.notes && me.role !== "owner" ? `<div class="sec"><h3>Notes${subLike() ? " from Alleato" : ""}</h3><div class="notes">${esc(it.notes)}</div></div>` : ""}
       <div class="sec"><h3>Photos <span style="font-weight:500;text-transform:none;letter-spacing:0">${before.length} before &middot; ${after.length} after</span></h3>
         ${photos.length ? `<div class="photos">${photoGrid(before, "before")}${photoGrid(after, "after")}</div>` : `<div class="empty" style="padding:10px">No photos yet.${subLike() ? " Add one of the finished work and the owner can accept it from their desk." : ""}</div>`}
-        ${removedPhotos.length && me.role === "admin" ? `<div class="sub" style="margin-top:8px">Removed (kept on record): ${removedPhotos.map((p) => `<a href="${p.url}" target="_blank" rel="noopener" style="opacity:.6">${p.kind} ${fmtD(p.removed_at)}</a> (${esc(p.removed_reason || "")})`).join(", ")}</div>` : ""}</div>
+        ${removedPhotos.length && me.role === "admin" ? `<div class="sub" style="margin-top:10px">Removed, kept on record</div><div class="photos" style="margin-top:6px">${removedPhotos.map((p) => `<a href="${p.url}" target="_blank" rel="noopener" style="opacity:.4;filter:grayscale(1)" title="${esc(p.removed_reason || "")}"><img src="${p.url}" alt="removed photo" loading="lazy"><span class="tag">removed ${fmtD(p.removed_at)}</span></a>`).join("")}</div>` : ""}</div>
       <div class="sec"><div class="actions">${A.join("")}</div></div>
       <div class="sec"><h3>History</h3><ul class="hist" id="hist"><li><span class="dot"></span><span class="meta">Loading</span></li></ul>
         <div style="margin-top:12px;display:flex;gap:8px"><input class="in" id="cmt" placeholder="Add a comment" onkeydown="if(event.key==='Enter')comment('${slug}','${id}')"><button class="btn sm ink" onclick="comment('${slug}','${id}')">Post</button></div></div>
