@@ -84,7 +84,7 @@ h1,h2,h3{margin:0;font-weight:800;letter-spacing:-.01em}
 .st{display:inline-flex;align-items:center;gap:6px;padding:3px 9px;border-radius:999px;font-size:12px;font-weight:700;color:#fff;white-space:nowrap}
 .st::before{content:"";width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,.75)}
 .st.s-Draft{background:var(--s-draft)} .st.s-Open{background:var(--s-open)} .st.s-Work{background:var(--s-work)}
-.st.s-In{background:var(--s-dispute)} .st.s-Ready{background:var(--s-review)} .st.s-ReadyC{background:var(--s-close)}
+.st.s-In{background:var(--s-dispute)} .st.s-Blocked{background:#B5651D} .st.s-Ready{background:var(--s-review)} .st.s-ReadyC{background:var(--s-close)}
 .st.s-Not{background:var(--s-notacc)} .st.s-Closed{background:var(--s-closed)}
 .filters{display:flex;gap:8px;overflow-x:auto;padding:4px 0 10px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .filters::-webkit-scrollbar{display:none}
@@ -254,15 +254,15 @@ textarea.ta{min-height:76px;resize:vertical}
 <script>
 // ---------- config ----------
 const API = "https://wwwtpeeywpdiazhwzwlr.supabase.co/functions/v1/api";
-const BUILD = "20261027-134221"; // stamped by tools/publish.py
-const STATUSES = ["Draft","Open","Work Required","In Dispute","Ready for Review","Not Accepted","Ready to Close","Closed","Removed"];
-const JP_STATUS = {"Draft":0,"Open":0,"Work Required":0,"In Dispute":0,"Not Accepted":0,"Ready for Review":1,"Ready to Close":1,"Closed":2,"Removed":2};
+const BUILD = "20261028-082532"; // stamped by tools/publish.py
+const STATUSES = ["Draft","Open","Work Required","In Dispute","Blocked","Ready for Review","Not Accepted","Ready to Close","Closed","Removed"];
+const JP_STATUS = {"Draft":0,"Open":0,"Work Required":0,"In Dispute":0,"Blocked":0,"Not Accepted":0,"Ready for Review":1,"Ready to Close":1,"Closed":2,"Removed":2};
 const JP_PROJECT = {};
 const STATUS_COLOR = {"Draft":"var(--s-draft)","Open":"var(--s-open)","Work Required":"var(--s-work)","In Dispute":"var(--s-dispute)","Ready for Review":"var(--s-review)","Not Accepted":"var(--s-notacc)","Ready to Close":"var(--s-close)","Closed":"var(--s-closed)"};
-const STATUS_HEX = {"Draft":"#9AA0A6","Open":"#5B6470","Work Required":"#2D6CDF","In Dispute":"#8E44AD","Ready for Review":"#D99A06","Not Accepted":"#D64545","Ready to Close":"#1E9E8A","Closed":"#2F8F5B","Removed":"#9AA0A6"};
-const STATUS_CLASS = {"Draft":"s-Draft","Open":"s-Open","Work Required":"s-Work","In Dispute":"s-In","Ready for Review":"s-Ready","Not Accepted":"s-Not","Ready to Close":"s-ReadyC","Closed":"s-Closed","Removed":"s-Draft"};
+const STATUS_HEX = {"Draft":"#9AA0A6","Open":"#5B6470","Work Required":"#2D6CDF","In Dispute":"#8E44AD","Blocked":"#B5651D","Ready for Review":"#D99A06","Not Accepted":"#D64545","Ready to Close":"#1E9E8A","Closed":"#2F8F5B","Removed":"#9AA0A6"};
+const STATUS_CLASS = {"Draft":"s-Draft","Open":"s-Open","Work Required":"s-Work","In Dispute":"s-In","Blocked":"s-Blocked","Ready for Review":"s-Ready","Not Accepted":"s-Not","Ready to Close":"s-ReadyC","Closed":"s-Closed","Removed":"s-Draft"};
 const PLAIN = { // what each status means to the person reading it
-  "Draft":"Not sent yet", "Open":"Logged, no sub yet", "Work Required":"With the sub", "In Dispute":"Sub disputes it",
+  "Draft":"Not sent yet", "Open":"Logged, no sub yet", "Work Required":"With the sub", "In Dispute":"Sub disputes it", "Blocked":"Could not finish; Alleato to clear",
   "Ready for Review":"Sub says done", "Not Accepted":"Sent back", "Ready to Close":"Alleato verified", "Closed":"Owner accepted", "Removed":"Taken off the list (on record)" };
 // Who holds the ball at each status. The one thing everyone should see at a glance.
 function ballInCourt(it, b) {
@@ -273,6 +273,7 @@ function ballInCourt(it, b) {
     case "Open": return it.assignee_id ? "Alleato: send to " + who : "Alleato: assign it";
     case "Work Required": return who + ": do it, photo it";
     case "In Dispute": return "Alleato: settle the dispute";
+    case "Blocked": return "Alleato: clear the block";
     case "Ready for Review": return "Alleato: verify";
     case "Not Accepted": return who + ": fix and resubmit";
     case "Ready to Close": return "Owner: accept";
@@ -296,7 +297,44 @@ const TYPES = ["Punch","C/O","Orig Scope - Gated"];
 
 // ---------- state ----------
 const S = { k: null, me: null, projects: null, boards: {}, work: null, filter: "all", type: "", who: "", group: "", placing: null, planId: null };
-const subLike = () => S.me && (S.me.role === "sub" || S.me.role === "helper");
+let VIEW_AS = null; try { VIEW_AS = sessionStorage.getItem("pl_view_as"); } catch {}
+const helperView = () => S.me && (S.me.role === "helper" || (S.me.role === "admin" && VIEW_AS === "helper"));
+const readOnly = () => S.me && S.me.role === "admin" && VIEW_AS === "helper";
+const subLike = () => S.me && (S.me.role === "sub" || helperView());
+function setViewAs(v) { VIEW_AS = v; try { v ? sessionStorage.setItem("pl_view_as", v) : sessionStorage.removeItem("pl_view_as"); } catch {} go(v ? "#/run" : "#/"); render(); }
+const PEOPLE = [
+  { name: "Colin Gillespie", role: "Field engineer, runs these stores", phone: "317.750.8033", when: "First call for anything on the item list, the plan, materials, or a store question." },
+  { name: "Nick Brimie", role: "Assistant superintendent, built the first stores", phone: "224.639.5739", when: "How something was built, where a panel or shut-off is, what a sub did." },
+  { name: "Doug Franklin", role: "Senior PM", phone: "317.437.5361", when: "Owner or store manager pushback, anything money or scope, if Colin cannot be reached." },
+  { name: "Andrew Cannon", role: "Assistant PM", phone: "317.315.3968", when: "JobPlanner, paperwork, schedule questions." },
+];
+function peopleCard() {
+  return `<div class="card" style="padding:14px;margin-top:16px"><h2 style="font-size:15px">Who to call</h2>
+    ${PEOPLE.map((p) => `<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)"><div><b>${esc(p.name)}</b><div class="sub">${esc(p.role)}</div><div class="sub" style="font-size:12px">${esc(p.when)}</div></div><a class="btn sm ink" href="tel:${p.phone.replace(/\./g, "")}" style="white-space:nowrap">&#128222; ${p.phone}</a></div>`).join("")}
+    <div style="padding:8px 0"><b>Andrew Mulder</b>, Goodwill facilities PM <div class="sub">Do not contact. Colin or Doug does. If he is on site, be polite, show him the app if he asks, and let Colin know.</div></div></div>`;
+}
+const HELPER_TABS = (on) => `<div class="tabs">${[["run", "My run"], ["bring", "Bring"], ["notmine", "Not mine"], ["stores", "Stores"], ["eod", "End of day"]].map(([k, l]) => `<a class="${on === k ? "on" : ""}" href="#/${k}">${l}</a>`).join("")}</div>${readOnly() ? `<div class="sub" style="margin:-6px 0 10px">Viewing as the field helper, read only. <a href="#" onclick="event.preventDefault();setViewAs(null)">Back to Alleato view</a></div>` : ""}`;
+const FACT_KEYS = [
+  ["hours", "Store hours"], ["entrance", "Which door to use"], ["parking", "Where to park and unload"], ["checkin_rule", "Check-in rule"], ["customer_hours_rules", "Rules during customer hours"],
+  ["panel", "Electrical panel: where, labeled?"], ["water_shutoff", "Water shut-off"], ["ceiling", "Ceiling type and height"], ["attic_stock", "Attic stock (tiles, paint) and where"], ["paint_colors", "Paint colors by area"],
+  ["dumpster", "Dumpster / haul-off rule"], ["restroom", "Restroom use"], ["after_hours", "Alarm / after-hours access"], ["hazards", "Hazards and limits"], ["off_limits", "Areas Goodwill keeps off limits"], ["dock_traffic", "Donation dock traffic"],
+];
+const NOT_MINE_LINE = { "C/O": "That is a change order Alleato is pricing; it is not part of today's punch.", "Orig Scope - Gated": "That is contract work waiting on Goodwill (a decision or material); not today.", "by_owner": "That is on Goodwill's contract; their vendor handles it.", "sub": "The sub is scheduled for that; Alleato coordinates it." };
+const BLOCK_REASONS = ["Blocked by something on site", "Needs material", "Store said no", "Other"];
+let BRIEF = { date: null, data: null };
+async function loadBrief(force) {
+  const date = S.runDate || new Date().toISOString().slice(0, 10);
+  if (BRIEF.data && BRIEF.date === date && !force) return BRIEF.data;
+  BRIEF = { date, data: await api("helper_brief", { date }) }; return BRIEF.data;
+}
+const mapLink = (addr) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr || "")}`;
+const minutesOf = (it) => it.card?.minutes || 30;
+function storeItems(B, pid) { return B.items.filter((i) => i.project_id === pid); }
+function runStores(B) {
+  const released = B.stores.filter((p) => p.released !== false);
+  if (B.run && B.run.run_stops.length) return B.run.run_stops.map((st) => ({ ...released.find((p) => p.id === st.project_id) || B.stores.find((p) => p.id === st.project_id), stop: st })).filter((p) => p && p.id);
+  return released.filter((p) => storeItems(B, p.id).some((i) => i.mine)).map((p) => ({ ...p, stop: null }));
+}
 const MARK = `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="M32 8c-9.9 0-18 7.8-18 17.5C14 38.2 32 56 32 56s18-17.8 18-30.5C50 15.8 41.9 8 32 8z" fill="#fff"/><circle cx="32" cy="25.5" r="6.5" fill="#E4572E"/></svg>`;
 
 const qs = new URLSearchParams(location.search);
@@ -362,6 +400,8 @@ function render() {
     if (parts[2] === "plan") return renderPlan(slug, parts[3]);
     if (parts[2] === "walk") return renderWalk(slug);
     if (parts[2] === "walks") return parts[3] ? renderWalkReview(slug, parts[3]) : renderWalks(slug);
+    if (parts[2] === "brief") return renderBrief(slug);
+    if (parts[2] === "runsheet") return renderRunSheet(slug);
     if (parts[2] === "signoff") return renderSignoff(slug);
     if (parts[2] === "print") return renderPrint(slug);
     return renderBoard(slug);
@@ -369,7 +409,14 @@ function render() {
   if (parts[0] === "people") return renderPeople();
   if (parts[0] === "process" || parts[0] === "how") return renderPage("how-punch-works", "How punch works");
   if (parts[0] === "why") return renderPage("benefits", "What it saves");
-  if (parts[0] === "work") return renderWork();
+  if (parts[0] === "work") return helperView() ? renderRun() : renderWork();
+  if (parts[0] === "run") return renderRun();
+  if (parts[0] === "bring") return renderBring();
+  if (parts[0] === "notmine") return renderNotMine();
+  if (parts[0] === "stores") return renderHelperStores();
+  if (parts[0] === "eod") return renderEod();
+  if (parts[0] === "runsheet") return renderRunSheet(parts[1]);
+  if (parts[0] === "runs") return renderRuns();
   return renderHome();
 }
 
@@ -378,7 +425,7 @@ function shell(inner, opts = {}) {
   $("#app").innerHTML = `
     <header class="bar"><div class="wrap">
       ${opts.back ? `<button class="back" onclick="history.length>1?history.back():go('')">&#8592; ${esc(opts.back)}</button>` : `<a class="brand" href="#/"><span class="mark">${MARK}</span><span>Punch<b>line</b></span></a>`}
-      <div class="who">${esc(me.name)}<small>${esc(me.company || "")} &middot; ${me.role === "admin" ? "Alleato" : me.role === "owner" ? "Owner" : me.role === "helper" ? "Alleato field" : "Subcontractor"}</small></div>
+      <div class="who">${esc(me.name)}<small>${esc(me.company || "")} &middot; ${readOnly() ? "viewing as field helper" : me.role === "admin" ? "Alleato" : me.role === "owner" ? "Owner" : me.role === "helper" ? "Alleato field" : "Subcontractor"}</small></div>
     </div></header>
     <main class="wrap ${opts.wide ? "wide" : ""}"><div class="page">${inner}</div></main>`;
   window.scrollTo(0, 0);
@@ -409,6 +456,7 @@ function countsFor(items) {
 }
 async function renderHome() {
   const me = S.me;
+  if (helperView()) return renderRun();
   if (subLike()) return renderWork();
   document.title = "Punchline";
   shell(loading());
@@ -426,7 +474,9 @@ async function renderHome() {
     <div class="h"><div><h1>${me.role === "owner" ? "Your stores" : "Stores"}</h1><div class="sub">${allOpen} open item${allOpen === 1 ? "" : "s"} across ${S.projects.length} store${S.projects.length === 1 ? "" : "s"}</div></div></div>
     <div class="grid">${cards || `<div class="empty">No stores yet.</div>`}</div>
     <div class="stack" style="margin-top:18px">
-      ${me.role === "admin" ? `<a class="bigbtn" href="#/people">People &amp; links<small>Subs, the owner, and the link each one opens</small></a>` : ""}
+      ${me.role === "admin" ? `<a class="bigbtn" href="#/people">People &amp; links<small>Subs, the owner, and the link each one opens</small></a>
+      <a class="bigbtn" href="#/runs">Runs<small>Plan the field helper's days: stores in order, start times, drive minutes</small></a>
+      <a class="bigbtn" href="#" onclick="event.preventDefault();setViewAs('helper')">View as field helper<small>Exactly what the helper's link shows, read only</small></a>` : ""}
       <a class="bigbtn" href="#/how">How punch works<small>Walk, owner agrees, assigned, completed, verified, accepted, closed.</small></a>
       <a class="bigbtn" href="#/why">What it saves<small>Miles, trips, days to payment, one frozen list, the JobPlanner record, $0 to run.</small></a>
     </div>`);
@@ -507,11 +557,12 @@ async function editStore(slug) {
     <div class="two">${f("st_pm", "Alleato PM", p.alleato_pm)}${f("st_lead", "Alleato field lead", p.field_lead)}</div>
     ${f("st_notes", "Store notes (Alleato only)", p.notes)}
     <div class="field"><label style="display:inline-flex;gap:8px;align-items:center;text-transform:none;letter-spacing:0"><input type="checkbox" id="st_esign" ${p.esign_enabled ? "checked" : ""}> Owner may draw a signature in the app (off = typed name only; ownership decides)</label></div>
+    <div class="field"><label style="display:inline-flex;gap:8px;align-items:center;text-transform:none;letter-spacing:0"><input type="checkbox" id="st_released" ${p.released !== false ? "checked" : ""}> Released to the field helper (off = held; Macomb until plumbing is done)</label></div>
     <div class="btnrow"><button class="btn" id="c">Cancel</button><button class="btn primary" id="s">Save</button></div>`);
   $("#c", bg).onclick = () => bg.remove();
   $("#s", bg).onclick = async () => {
     const v = (id) => $("#" + id, bg).value.trim();
-    try { await api("project_save", { id: p.id, walk_date: v("st_walk"), walk_attendees: v("st_att"), walk_note: v("st_wnote"), manager_name: v("st_mgr"), manager_phone: v("st_mph"), manager_note: v("st_mnote"), address: v("st_addr"), owner_rep: v("st_rep"), alleato_pm: v("st_pm"), field_lead: v("st_lead"), notes: v("st_notes"), esign_enabled: $("#st_esign", bg).checked }); bg.remove(); await loadBoard(slug, true); render(); toast("Saved"); }
+    try { await api("project_save", { id: p.id, walk_date: v("st_walk"), walk_attendees: v("st_att"), walk_note: v("st_wnote"), manager_name: v("st_mgr"), manager_phone: v("st_mph"), manager_note: v("st_mnote"), address: v("st_addr"), owner_rep: v("st_rep"), alleato_pm: v("st_pm"), field_lead: v("st_lead"), notes: v("st_notes"), esign_enabled: $("#st_esign", bg).checked, released: $("#st_released", bg).checked }); bg.remove(); await loadBoard(slug, true); render(); toast("Saved"); }
     catch (e) { toast(e.message, true); }
   };
 }
@@ -553,16 +604,18 @@ async function renderItem(slug, id) {
   // actions by role + status
   const A = [];
   const st = it.status;
-  if (subLike()) {
+  if (readOnly()) A.push(`<div class="empty" style="padding:12px">Read-only preview of the field helper's view.</div>`);
+  else if (subLike()) {
     if (["Open", "Work Required", "Not Accepted", "In Dispute"].includes(st)) {
       A.push(`<button class="btn primary" onclick="addPhotos('${slug}','${id}','after')">&#128247; Add photo of the finished work</button>`);
       A.push(`<button class="btn ok" onclick="subComplete('${slug}','${id}')">&#10003; Mark complete, send for review</button>`);
-      if (st !== "In Dispute") A.push(`<button class="btn ghost" onclick="move('${slug}','${id}','In Dispute','Why are you disputing this item?',true)">Dispute this item</button>`);
+      if (helperView()) A.push(`<button class="btn warn" onclick="cantFinish('${slug}','${id}')">Can't finish</button>`);
+      else if (st !== "In Dispute") A.push(`<button class="btn ghost" onclick="move('${slug}','${id}','In Dispute','Why are you disputing this item?',true)">Dispute this item</button>`);
     }
     if (st === "Ready for Review") A.push(`<div class="empty" style="padding:12px">Sent to Alleato for review. Add more photos any time.</div><button class="btn" onclick="addPhotos('${slug}','${id}','after')">&#128247; Add another photo</button>`);
     if (["Ready to Close", "Closed"].includes(st)) A.push(`<div class="empty" style="padding:12px">${st === "Closed" ? "Accepted by the owner. Nothing more to do." : "Verified by Alleato, waiting on the owner."}</div>`);
   }
-  if (me.role === "owner") {
+  if (me.role === "owner" && !readOnly()) {
     if (st === "Ready to Close") {
       A.push(`<button class="btn ok" onclick="move('${slug}','${id}','Closed','Any note for the record? (optional)')">&#10003; Accept and close</button>`);
       A.push(`<button class="btn warn" onclick="move('${slug}','${id}','Not Accepted','What still needs doing?',true)">Send it back</button>`);
@@ -570,7 +623,7 @@ async function renderItem(slug, id) {
     else if (st === "Closed") A.push(`<div class="empty" style="padding:12px">Closed ${fmtD(it.closed_at)}.</div>`);
     else A.push(`<div class="empty" style="padding:12px">${PLAIN[st]}. You will see Accept here once the work is done and photographed.</div>`);
   }
-  if (me.role === "admin") {
+  if (me.role === "admin" && !readOnly()) {
     A.push(`<div class="btnrow">
       <button class="btn" onclick="addPhotos('${slug}','${id}','before')">&#128247; Before</button>
       <button class="btn" onclick="addPhotos('${slug}','${id}','after')">&#128247; After</button>
@@ -579,9 +632,9 @@ async function renderItem(slug, id) {
       <button class="btn" onclick="notified('${slug}','${id}')">&#128222; Told them</button>
       <button class="btn" onclick="toggleWalk('${slug}','${id}',${it.walk_excluded ? "false" : "true"})">${it.walk_excluded ? "Put in the walk" : "Leave out of the walk"}</button></div>`);
     const row2 = [];
-    if (["Open", "Draft", "Not Accepted", "In Dispute"].includes(st) && it.assignee_id) row2.push(`<button class="btn ink" onclick="move('${slug}','${id}','Work Required','Note to the sub (optional)')">Send to sub</button>`);
+    if (["Open", "Draft", "Not Accepted", "In Dispute", "Blocked"].includes(st) && it.assignee_id) row2.push(`<button class="btn ink" onclick="move('${slug}','${id}','Work Required','Note to the sub (optional)')">Send to sub</button>`);
     if (st === "Draft" && !it.assignee_id) row2.push(`<button class="btn ink" onclick="move('${slug}','${id}','Open','')">Publish</button>`);
-    if (["Ready for Review", "Work Required", "Open", "Not Accepted", "In Dispute"].includes(st)) row2.push(`<button class="btn ok" onclick="move('${slug}','${id}','Ready to Close','Verified on site? Add a note (optional)')">&#10003; Verified, ready for owner</button>`);
+    if (["Ready for Review", "Work Required", "Open", "Not Accepted", "In Dispute", "Blocked"].includes(st)) row2.push(`<button class="btn ok" onclick="move('${slug}','${id}','Ready to Close','Verified on site? Add a note (optional)')">&#10003; Verified, ready for owner</button>`);
     if (st === "Ready for Review") row2.push(`<button class="btn warn" onclick="move('${slug}','${id}','Not Accepted','What still needs doing?',true)">Send back to sub</button>`);
     if (["Ready to Close", "Ready for Review"].includes(st)) row2.push(`<button class="btn" onclick="move('${slug}','${id}','Closed','Closing on the owner\\'s behalf? Say who accepted it.',true)">Close</button>`);
     if (st === "Closed") row2.push(`<button class="btn ghost" onclick="move('${slug}','${id}','Work Required','Why is it being reopened?',true)">Reopen</button>`);
@@ -605,7 +658,8 @@ async function renderItem(slug, id) {
       </div>
       ${plan && it.pin_x != null ? `<div class="sec"><h3>On the plan <a class="lnk" href="#/p/${slug}/plan/${id}">Open plan</a></h3>
         <a href="#/p/${slug}/plan/${id}" class="minimap" style="display:block"><img src="${plan.url}" alt="" style="object-position:${(it.pin_x * 100).toFixed(1)}% ${(it.pin_y * 100).toFixed(1)}%;object-fit:none;transform:scale(.55);transform-origin:center"><span class="pin" style="left:50%;top:50%;width:30px;height:38px">${pinSvg(it.number, STATUS_HEX[st])}</span></a></div>` : me.role === "admin" ? `<div class="sec"><h3>On the plan</h3><a class="btn sm" href="#/p/${slug}/plan/${id}">&#128205; Drop a pin so the sub can find it</a></div>` : ""}
-      ${it.notes && me.role !== "owner" ? `<div class="sec"><h3>Notes${subLike() ? " from Alleato" : ""}</h3><div class="notes">${esc(it.notes)}</div></div>` : ""}
+      ${it.notes && me.role !== "owner" && !helperView() ? `<div class="sec"><h3>Notes</h3><div class="notes">${esc(it.notes)}</div></div>` : ""}
+      ${(helperView() || me.role === "admin") ? `<div id="cardsec"></div>` : ""}
       <div class="sec"><h3>Photos <span style="font-weight:500;text-transform:none;letter-spacing:0">${before.length} before &middot; ${after.length} after</span></h3>
         ${photos.length ? `<div class="photos">${photoGrid(before, "before")}${photoGrid(after, "after")}</div>` : `<div class="empty" style="padding:10px">No photos yet.${subLike() ? " Add one of the finished work and the owner can accept it from their desk." : ""}</div>`}
         ${removedPhotos.length && me.role === "admin" ? `<div class="sub" style="margin-top:10px">Removed, kept on record</div><div class="photos" style="margin-top:6px">${removedPhotos.map((p) => `<a href="${p.url}" target="_blank" rel="noopener" style="opacity:.4;filter:grayscale(1)" title="${esc(p.removed_reason || "")}"><img src="${p.url}" alt="removed photo" loading="lazy"><span class="tag">removed ${fmtD(p.removed_at)}</span></a>`).join("")}</div>` : ""}</div>
@@ -614,6 +668,7 @@ async function renderItem(slug, id) {
         <div style="margin-top:12px;display:flex;gap:8px"><input class="in" id="cmt" placeholder="Add a comment" onkeydown="if(event.key==='Enter')comment('${slug}','${id}')"><button class="btn sm ink" onclick="comment('${slug}','${id}')">Post</button></div></div>
     </div>`, { back: b.project.name });
   loadHistory(id);
+  if (helperView() || me.role === "admin") loadBrief().then((B) => { const bi = B.items.find((i) => i.id === id); const el = $("#cardsec"); if (el && bi) el.outerHTML = cardSection(bi, b); }).catch(() => {});
 }
 function diffText(note) {
   try { const i = note.indexOf("{"); const d = JSON.parse(note.slice(i)); const pre = note.slice(0, i).trim();
@@ -960,6 +1015,222 @@ async function shotToItem(slug, shotId, walkId) {
   try { const r = await api("walk_to_item", { shot_id: shotId, title }); toast(`#${r.item.number} created as Draft`); await loadBoard(slug, true); renderWalkReview(slug, walkId); } catch (e) { toast(e.message, true); }
 }
 
+// ---------- field helper brief ----------
+async function renderRun() {
+  shell(loading());
+  let B; try { B = await loadBrief(true); } catch (e) { return shell(`<div class="empty">${esc(e.message)}</div>`); }
+  document.title = "My run · Punchline";
+  const stores = runStores(B); let total = 0, cnt = 0;
+  const rows = stores.map((p) => { const mine = storeItems(B, p.id).filter((i) => i.mine); const mins = mine.reduce((a, i) => a + minutesOf(i), 0); total += mins; cnt += mine.length; return `
+    <a class="item" href="#/p/${p.slug}/brief"><div class="num" style="font-size:12px">${p.stop?.start_time ? esc(p.stop.start_time) : "&#8212;"}</div>
+      <div><div class="t">${esc(p.name)}</div><div class="m"><span>${esc(p.address || "address not on file")}</span>${p.stop?.drive_minutes != null ? `<span>&#128663; ${p.stop.drive_minutes} min drive</span>` : ""}</div>
+      <div class="m" style="margin-top:4px"><b>${mine.length} item${mine.length === 1 ? "" : "s"} I can work</b><span>about ${mins} min</span>${p.released === false ? `<span style="color:var(--s-notacc);font-weight:700">not released yet</span>` : ""}${p.facts?.told_who ? `<span>store told ${fmtD(p.facts.told_at)}</span>` : `<span style="color:var(--s-notacc)">store not told yet</span>`}</div></div></a>`; }).join("");
+  const held = B.stores.filter((p) => p.released === false);
+  shell(`${HELPER_TABS("run")}
+    <div class="h"><div><h1>My run</h1><div class="sub">${fmtD(B.date)}${B.run ? ` &middot; planned by Alleato${B.run.note ? ": " + esc(B.run.note) : ""}` : " &middot; no run planned for this day; stores in the agreed order"}</div></div>
+      <input class="in" type="date" value="${B.date}" style="width:auto" onchange="S.runDate=this.value;renderRun()"></div>
+    <div class="card">${rows || `<div class="empty">Nothing to work on this day.</div>`}</div>
+    <div class="sub" style="margin-top:8px">${cnt} items, about ${Math.round(total / 60 * 10) / 10} hours of work${held.length ? `. Held until Colin releases: ${held.map((p) => esc(p.name)).join(", ")}` : ""}.</div>
+    <div class="btnrow" style="margin-top:12px"><a class="btn" href="#/runsheet">Print the day (run sheet)</a></div>
+    ${peopleCard()}`);
+}
+function materialsFor(B, stores) {
+  const mats = {}, tools = new Set(); let ladder = 0; const ppe = new Set(); const lead = [];
+  for (const p of stores) for (const it of storeItems(B, p.id).filter((i) => i.mine)) {
+    const c = it.card; if (!c) continue;
+    for (const t of c.tools || []) tools.add(typeof t === "string" ? t : t.name);
+    for (const m of c.materials || []) { const k = (m.name || "").toLowerCase(); const e = (mats[k] ||= { name: m.name, qty: 0, unit: m.unit || "", sources: new Set(), items: [] }); e.qty += Number(m.qty) || 0; if (m.source) e.sources.add(m.source); e.items.push(`${p.name} #${it.number}`); if (m.lead_time) lead.push(`${m.name}: ${m.lead_time}`); }
+    if (c.ladder_ft) ladder = Math.max(ladder, c.ladder_ft);
+    if (c.ppe) ppe.add(c.ppe);
+  }
+  return { mats: Object.values(mats), tools: [...tools], ladder, ppe: [...ppe], lead };
+}
+async function renderBring() {
+  shell(loading());
+  const B = await loadBrief(); const stores = runStores(B); const m = materialsFor(B, stores);
+  document.title = "What to bring · Punchline";
+  const noCards = stores.flatMap((p) => storeItems(B, p.id).filter((i) => i.mine && !i.card));
+  shell(`${HELPER_TABS("bring")}<div class="h"><div><h1>What to bring</h1><div class="sub">For ${fmtD(B.date)}: ${stores.map((p) => esc(p.name)).join(", ") || "no stores"}</div></div></div>
+    <div class="card"><div class="sec"><h3>Materials</h3>${m.mats.length ? `<table style="width:100%;border-collapse:collapse;font-size:14px">${m.mats.map((x) => `<tr style="border-top:1px solid var(--line)"><td style="padding:6px 0"><b>${esc(x.name)}</b><div class="sub" style="font-size:12px">${x.items.join(", ")}</div></td><td style="text-align:right;white-space:nowrap">${x.qty || ""} ${esc(x.unit)}</td><td style="text-align:right;font-size:12px;color:var(--muted)">${[...x.sources].map(esc).join("; ") || "source not on file"}</td></tr>`).join("")}</table>` : `<div class="empty">No materials listed yet${noCards.length ? " (cards not filled for " + noCards.length + " items)" : ""}.</div>`}</div>
+      <div class="sec"><h3>Tools</h3>${m.tools.length ? `<div class="notes">${m.tools.map(esc).join(", ")}</div>` : `<div class="empty">No tools listed yet.</div>`}</div>
+      <div class="sec"><h3>Ladder</h3><div class="notes">${m.ladder ? m.ladder + " ft" : "Not on file, ask Colin"}</div></div>
+      <div class="sec"><h3>PPE</h3><div class="notes">${m.ppe.length ? m.ppe.map(esc).join("; ") : "Standard: boots, glasses, gloves."}</div></div>
+      ${m.lead.length ? `<div class="sec"><h3>Lead time</h3><div class="notes" style="color:var(--s-notacc)">${m.lead.map(esc).join("<br>")}</div></div>` : ""}</div>
+    ${peopleCard()}`);
+}
+function notMineGroups(B, pid) {
+  const g = { "C/O": [], "Orig Scope - Gated": [], by_owner: [], sub: [] };
+  for (const it of storeItems(B, pid)) { if (it.mine || ["Closed"].includes(it.status)) continue; if (it.by_owner) g.by_owner.push(it); else if (it.type !== "Punch") g[it.type].push(it); else g.sub.push(it); }
+  return g;
+}
+async function renderNotMine() {
+  shell(loading());
+  const B = await loadBrief(); const stores = runStores(B).length ? runStores(B) : B.stores;
+  document.title = "Not mine · Punchline";
+  const label = { "C/O": "Change orders", "Orig Scope - Gated": "Contract work waiting on Goodwill", by_owner: "On Goodwill's contract (their vendor)", sub: "A sub's items" };
+  shell(`${HELPER_TABS("notmine")}<div class="h"><div><h1>Not mine</h1><div class="sub">Do not touch these. If a manager asks, say the line.</div></div></div>
+    ${stores.map((p) => { const g = notMineGroups(B, p.id); const n = Object.values(g).reduce((a, x) => a + x.length, 0); return `<div class="group">${esc(p.name)} (${n})</div><div class="card">${Object.entries(g).filter(([, v]) => v.length).map(([k, v]) => `<div class="sec"><h3>${label[k]}</h3><div class="sub" style="margin-bottom:6px">Say: "${NOT_MINE_LINE[k]}"</div>${v.map((it) => `<div style="padding:4px 0;font-size:14px"><b>#${it.number}</b> ${esc(it.title)}${it.responsible ? ` <span class="sub">(${esc(it.responsible)})</span>` : ""}</div>`).join("")}</div>`).join("") || `<div class="empty">Nothing here.</div>`}</div>`; }).join("")}
+    ${peopleCard()}`);
+}
+async function renderHelperStores() {
+  shell(loading()); const B = await loadBrief(); document.title = "Stores · Punchline";
+  shell(`${HELPER_TABS("stores")}<div class="h"><div><h1>Stores</h1></div></div><div class="card">${B.stores.map((p) => { const mine = storeItems(B, p.id).filter((i) => i.mine).length; return `<a class="item" href="#/p/${p.slug}/brief"><div class="num" style="font-size:12px">${mine}</div><div><div class="t">${esc(p.name)}</div><div class="m"><span>${esc(p.address || "")}</span>${p.released === false ? `<span style="color:var(--s-notacc);font-weight:700">not released</span>` : ""}</div></div></a>`; }).join("")}</div>${peopleCard()}`);
+}
+function factRow(f, key, label) {
+  const v = f?.facts?.[key]; const val = v && typeof v === "object" ? v.value : v;
+  return `<div class="sec" style="padding:10px 16px"><div style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">${label}</div><div style="font-size:15px;margin-top:2px">${val ? esc(val) : `<span style="color:var(--s-notacc)">Not on file, ask Colin</span>`}</div>${v && typeof v === "object" && v.source ? `<div class="sub" style="font-size:11px">${esc(v.source)}</div>` : ""}</div>`;
+}
+async function renderBrief(slug) {
+  shell(loading(), { back: "My run" });
+  const B = await loadBrief(); const p = B.stores.find((x) => x.slug === slug); if (!p) return shell(`<div class="empty">No such store.</div>`, { back: "My run" });
+  document.title = `${p.name} brief · Punchline`;
+  const mine = storeItems(B, p.id).filter((i) => i.mine); const f = p.facts || { facts: {} };
+  const pins = mine.filter((i) => i.plan_id && i.pin_x != null);
+  shell(`<div class="h"><div><h1>${esc(p.name)}</h1><div class="sub">${esc(p.job_no || "")}${p.released === false ? " &middot; <b style='color:var(--s-notacc)'>not released yet, do not go</b>" : ""}</div></div>${S.me.role === "admin" && !readOnly() ? `<button class="btn sm ink" onclick="editFacts('${slug}')">Edit facts</button>` : ""}</div>
+    <div class="card">
+      <div class="sec"><h3>Get there</h3><div style="font-size:15px">${esc(p.address || "Address not on file, ask Colin")}</div><div class="btnrow" style="margin-top:8px"><a class="btn sm ink" href="${mapLink(p.address)}" target="_blank" rel="noopener">&#128205; Map</a>${p.manager_phone ? `<a class="btn sm" href="tel:${esc(p.manager_phone.replace(/[^\d+]/g, ""))}">&#128222; ${esc(p.manager_name || "Store manager")}</a>` : ""}</div></div>
+      <div class="sec"><h3>Who to see first</h3><div style="font-size:15px">${p.manager_name ? `<b>${esc(p.manager_name)}</b>, store manager${p.manager_phone ? " &middot; " + esc(p.manager_phone) : " &middot; phone not on file, ask Colin"}` : `<span style="color:var(--s-notacc)">Store manager not on file, ask Colin</span>`}</div>
+        <div class="sub" style="margin-top:6px">${f.told_who ? `Store was told I am coming: ${esc(f.told_who)} on ${fmtD(f.told_at)}${f.told_note ? " (" + esc(f.told_note) + ")" : ""}` : `<span style="color:var(--s-notacc)">Nobody has told the store yet. Do not show up cold; call Colin.</span>`}</div></div>
+      ${FACT_KEYS.map(([k, l]) => factRow(f, k, l)).join("")}
+    </div>
+    ${p.plan ? `<div class="card" style="margin-top:12px;padding:12px"><h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px">My items on the plan</h3><div style="position:relative"><img src="${p.plan.url}" style="width:100%;display:block;border-radius:8px">${pins.map((i) => `<span class="pin" style="left:${i.pin_x * 100}%;top:${i.pin_y * 100}%;width:26px;height:33px">${pinSvg(i.number, STATUS_HEX[i.status])}</span>`).join("")}</div>${mine.length - pins.length ? `<div class="sub" style="margin-top:6px">${mine.length - pins.length} item(s) have no pin; go by the room name.</div>` : ""}</div>` : ""}
+    <div class="group">My items here (${mine.length})</div>
+    <div class="card">${mine.map((it) => itemCardRow(it, slug)).join("") || `<div class="empty">Nothing for me at this store.</div>`}</div>
+    <div class="btnrow" style="margin-top:12px"><a class="btn" href="#/p/${slug}/runsheet">Print this store</a><a class="btn" href="#/notmine">Not mine here</a></div>
+    ${peopleCard()}`, { back: "My run" });
+}
+function itemCardRow(it, slug) {
+  const c = it.card || {};
+  return `<a class="item" href="#/p/${slug}/i/${it.id}"><div class="num">${it.number}</div><div><div class="t">${esc(it.title)}</div>
+    <div class="m">${stChip(it.status)}<span>${esc(it.area || "")}</span><span>~${minutesOf(it)} min</span>${it.before.length ? `<span class="cam">&#128247; ${it.before.length} before</span>` : ""}</div>
+    ${c.done_looks_like ? `<div class="sub" style="margin-top:4px">Done = ${esc(c.done_looks_like)}</div>` : `<div class="sub" style="margin-top:4px;color:var(--s-notacc)">Card not filled yet, ask Colin</div>`}</div></a>`;
+}
+function cardSection(it, b) {
+  // Item card block on the item page (helper view, or admin editing).
+  const c = it.card || null; const inf = new Set((c?.inferred) || []);
+  const g = (k) => inf.has(k) ? ` <span class="chip type" style="font-size:10px">best guess</span>` : "";
+  const row = (k, label, val) => `<div><small>${label}${g(k)}</small>${val ? esc(val) : `<span style="color:var(--s-notacc)">Not on file, ask Colin</span>`}</div>`;
+  return `<div class="sec"><h3>The card ${S.me.role === "admin" && !readOnly() ? `<button class="lnk" onclick="editCard('${b.project.slug}','${it.id}')">Edit card</button>` : ""}</h3>
+    <div class="facts" style="padding:0;border:0">
+      ${row("done_looks_like", "Done looks like", c?.done_looks_like)}${row("photo_proof", "Photo proof", c?.photo_proof)}
+      ${row("minutes", "Minutes", c?.minutes ? c.minutes + " min" : "")}${row("ladder_ft", "Ladder", c?.ladder_ft ? c.ladder_ft + " ft" : "")}
+      ${row("tools", "Tools", (c?.tools || []).map((t) => typeof t === "string" ? t : t.name).join(", "))}${row("materials", "Materials", (c?.materials || []).map((m) => `${m.qty || ""} ${m.unit || ""} ${m.name}${m.source ? " (" + m.source + ")" : ""}`.trim()).join("; "))}
+      ${row("dependency", "Depends on", c?.dependency)}${row("safety", "Safety", c?.safety)}${row("ppe", "PPE", c?.ppe)}
+      ${c?.source ? `<div class="full"><small>Source</small>${esc(c.source)}</div>` : ""}
+    </div></div>`;
+}
+async function cantFinish(slug, id) {
+  const bg = sheet(`<h2>Can't finish</h2><div class="field"><label>Why</label><select class="in" id="cf_why">${BLOCK_REASONS.map((r) => `<option>${r}</option>`).join("")}</select></div>
+    <div class="field"><label>Note (what you need)</label><input class="in" id="cf_note"></div>
+    <div class="btnrow"><button class="btn" id="c">Cancel</button><button class="btn warn" id="s">Send back to Alleato</button></div>`);
+  $("#c", bg).onclick = () => bg.remove();
+  $("#s", bg).onclick = async () => { const cur = (S.boards[slug]?.items || []).find((i) => i.id === id); try { await api("transition", { id, to: "Blocked", note: `${$("#cf_why", bg).value}: ${$("#cf_note", bg).value.trim()}`, from_status: cur?.status }); bg.remove(); toast("Sent back to Alleato"); await loadBoard(slug, true); BRIEF.data = null; render(); } catch (e) { toast(e.message, true); } };
+}
+async function editCard(slug, id) {
+  const b = S.boards[slug]; const it = b.items.find((i) => i.id === id);
+  let c = {}; try { const B = await loadBrief(); c = (B.items.find((i) => i.id === id) || {}).card || {}; } catch {}
+  const f = (k, label, val, ta) => `<div class="field"><label>${label}</label>${ta ? `<textarea class="ta" id="cd_${k}" style="min-height:52px">${esc(val || "")}</textarea>` : `<input class="in" id="cd_${k}" value="${esc(val || "")}">`}</div>`;
+  const bg = sheet(`<h2>Card for #${it.number}</h2>
+    ${f("done_looks_like", "Done looks like (one sentence)", c.done_looks_like, true)}${f("photo_proof", "Photo proof: what the after photo must show, from where", c.photo_proof, true)}
+    <div class="two">${f("minutes", "Minutes", c.minutes)}${f("ladder_ft", "Ladder (ft)", c.ladder_ft)}</div>
+    ${f("tools", "Tools (comma separated)", (c.tools || []).map((t) => typeof t === "string" ? t : t.name).join(", "))}
+    ${f("materials", "Materials, one per line: qty | unit | name | source | lead time", (c.materials || []).map((m) => [m.qty, m.unit, m.name, m.source, m.lead_time].map((x) => x ?? "").join(" | ")).join("\n"), true)}
+    ${f("dependency", "Depends on", c.dependency)}${f("safety", "Safety", c.safety)}${f("ppe", "PPE", c.ppe)}
+    ${f("inferred", "Best-guess fields (comma separated field names)", (c.inferred || []).join(", "))}${f("source", "Source", c.source)}
+    <div class="btnrow"><button class="btn" id="c">Cancel</button><button class="btn primary" id="s">Save</button></div>`);
+  $("#c", bg).onclick = () => bg.remove();
+  $("#s", bg).onclick = async () => {
+    const v = (k) => $("#cd_" + k, bg).value.trim();
+    const materials = v("materials").split("\n").map((l) => l.trim()).filter(Boolean).map((l) => { const [qty, unit, name, source, lead_time] = l.split("|").map((x) => x.trim()); return { qty: parseFloat(qty) || qty || "", unit, name, source, lead_time }; });
+    try { await api("item_card_save", { item_id: id, done_looks_like: v("done_looks_like"), photo_proof: v("photo_proof"), minutes: parseInt(v("minutes")) || null, ladder_ft: parseInt(v("ladder_ft")) || null, tools: v("tools").split(",").map((x) => x.trim()).filter(Boolean), materials, dependency: v("dependency"), safety: v("safety"), ppe: v("ppe"), inferred: v("inferred").split(",").map((x) => x.trim()).filter(Boolean), source: v("source") }); bg.remove(); BRIEF.data = null; toast("Card saved"); render(); } catch (e) { toast(e.message, true); }
+  };
+}
+async function editFacts(slug) {
+  const B = await loadBrief(); const p = B.stores.find((x) => x.slug === slug); const f = p.facts || { facts: {} };
+  const row = ([k, l]) => { const v = f.facts?.[k]; const val = v && typeof v === "object" ? v.value : (v || ""); const src = v && typeof v === "object" ? v.source : ""; return `<div class="field"><label>${l}</label><input class="in" id="fx_${k}" value="${esc(val || "")}" placeholder="Not on file"><input class="in" id="fs_${k}" value="${esc(src || "")}" placeholder="Source" style="margin-top:4px;font-size:12px"></div>`; };
+  const bg = sheet(`<h2>${esc(p.name)}: site facts</h2>
+    <div class="two"><div class="field"><label>Store told I am coming: who</label><input class="in" id="fx_told_who" value="${esc(f.told_who || "")}"></div><div class="field"><label>When</label><input class="in" type="date" id="fx_told_at" value="${f.told_at ? f.told_at.slice(0, 10) : ""}"></div></div>
+    <div class="field"><label>Told note</label><input class="in" id="fx_told_note" value="${esc(f.told_note || "")}"></div>
+    ${FACT_KEYS.map(row).join("")}
+    <div class="btnrow"><button class="btn" id="c">Cancel</button><button class="btn primary" id="s">Save</button></div>`);
+  $("#c", bg).onclick = () => bg.remove();
+  $("#s", bg).onclick = async () => {
+    const facts = {}; for (const [k] of FACT_KEYS) { const v = $("#fx_" + k, bg).value.trim(), src = $("#fs_" + k, bg).value.trim(); if (v) facts[k] = { value: v, source: src || "Colin, in the app" }; }
+    try { await api("site_facts_save", { project_id: p.id, facts, told_who: $("#fx_told_who", bg).value.trim(), told_at: $("#fx_told_at", bg).value ? $("#fx_told_at", bg).value + "T12:00:00Z" : "", told_note: $("#fx_told_note", bg).value.trim() }); bg.remove(); BRIEF.data = null; toast("Saved"); render(); } catch (e) { toast(e.message, true); }
+  };
+}
+async function renderEod() {
+  shell(loading()); const B = await loadBrief(true); const stores = runStores(B); document.title = "End of day · Punchline";
+  const today = B.date;
+  shell(`${HELPER_TABS("eod")}<div class="h"><div><h1>End of day</h1><div class="sub">${fmtD(today)}. One tap per store; Colin reads it, no call needed.</div></div></div>
+    ${stores.map((p) => { const mine = storeItems(B, p.id); const done = mine.filter((i) => ["Ready for Review", "Ready to Close", "Closed"].includes(i.status) && i.mine === false || (["Ready for Review", "Ready to Close", "Closed"].includes(i.status) && i.type === "Punch" && !i.by_owner)); const open = mine.filter((i) => i.mine); const sent = B.reports.find((r) => r.project_id === p.id); return `
+      <div class="group">${esc(p.name)}</div><div class="card" style="padding:14px">
+        ${sent ? `<div class="chip type">&#10003; Sent ${fmtDT(sent.created_at)}</div>` : ""}
+        <div class="sub">Done today (marked complete): ${done.length ? done.map((i) => "#" + i.number).join(", ") : "none"}</div>
+        <div style="margin-top:8px"><b style="font-size:13px">Not done, and why</b>${open.map((i) => `<div style="display:grid;grid-template-columns:52px 1fr;gap:8px;margin-top:6px;align-items:center"><b>#${i.number}</b><input class="in" id="nd_${p.id}_${i.id}" placeholder="${esc(i.status === "Blocked" ? i.blocked_reason || "blocked" : "why not")}" value="${esc(i.status === "Blocked" ? (i.blocked_reason || "") : "")}"></div>`).join("") || `<div class="sub">nothing left open</div>`}</div>
+        <div class="two" style="margin-top:8px"><div class="field"><label>New walk shots today</label><input class="in" type="number" id="ns_${p.id}" value="0"></div><div class="field"><label>Anything else</label><input class="in" id="nt_${p.id}"></div></div>
+        <button class="btn ink" ${readOnly() ? "disabled" : ""} onclick="sendEod('${p.id}')">Send end of day for ${esc(p.name)}</button></div>`; }).join("") || `<div class="empty">No stores on today's run.</div>`}
+    ${peopleCard()}`);
+}
+async function sendEod(pid) {
+  const B = BRIEF.data; const mine = storeItems(B, pid);
+  const done = mine.filter((i) => ["Ready for Review", "Ready to Close", "Closed"].includes(i.status) && i.type === "Punch" && !i.by_owner).map((i) => ({ number: i.number, title: i.title }));
+  const not_done = mine.filter((i) => i.mine).map((i) => ({ number: i.number, title: i.title, why: ($("#nd_" + pid + "_" + i.id)?.value || "").trim() }));
+  try { const r = await api("day_report", { project_id: pid, report_date: B.date, done, not_done, new_shots: parseInt($("#ns_" + pid).value) || 0, note: $("#nt_" + pid).value }); toast("Sent to Colin"); BRIEF.data = null; renderEod(); } catch (e) { toast(e.message, true); }
+}
+async function renderRunSheet(slug) {
+  shell(loading(), { back: "My run" }); const B = await loadBrief();
+  const stores = slug ? B.stores.filter((p) => p.slug === slug) : runStores(B);
+  document.title = `Run sheet ${fmtD(B.date)} · Punchline`;
+  const m = materialsFor(B, stores);
+  const factLine = (f, k, l) => { const v = f?.facts?.[k]; const val = v && typeof v === "object" ? v.value : v; return `<tr><td style="width:34%"><b>${l}</b></td><td>${val ? esc(val) : "Not on file, ask Colin"}</td></tr>`; };
+  shell(`<div class="noprint btnrow" style="margin-bottom:14px"><button class="btn ink" onclick="window.print()">Print / save as PDF</button></div>
+    <div class="screen-doc"><div class="doc">
+      <div class="tl"><div><h1>RUN SHEET ${esc(fmtD(B.date))}</h1><div>${stores.map((p) => esc(p.name)).join(" &rarr; ")}</div></div><div style="text-align:right;font-size:11px">Punchline<br>${esc(B.me.name)}</div></div>
+      <h2>Who to call</h2><table>${PEOPLE.map((p) => `<tr><td><b>${esc(p.name)}</b> ${esc(p.phone)}</td><td>${esc(p.role)}. ${esc(p.when)}</td></tr>`).join("")}<tr><td><b>Andrew Mulder</b></td><td>Goodwill facilities PM. Do not contact; Colin or Doug does.</td></tr></table>
+      <h2>Bring</h2><table>${m.mats.map((x) => `<tr><td>${esc(x.name)}</td><td>${x.qty || ""} ${esc(x.unit)}</td><td>${[...x.sources].map(esc).join("; ")}</td></tr>`).join("") || "<tr><td>No materials listed yet</td></tr>"}</table>
+      <p>Tools: ${m.tools.map(esc).join(", ") || "not listed"}. Ladder: ${m.ladder ? m.ladder + " ft" : "not on file"}. PPE: ${m.ppe.map(esc).join("; ") || "boots, glasses, gloves"}.</p>
+      ${stores.map((p) => { const f = p.facts || { facts: {} }; const mine = storeItems(B, p.id).filter((i) => i.mine); const nm = notMineGroups(B, p.id); const pins = mine.filter((i) => i.plan_id && i.pin_x != null); return `
+        <div class="pg"></div><h2>${esc(p.name)}${p.stop?.start_time ? " &middot; " + esc(p.stop.start_time) : ""}${p.released === false ? " &middot; NOT RELEASED" : ""}</h2>
+        <div class="info"><div><small>Address</small>${esc(p.address || "not on file")}<br><small>${esc(mapLink(p.address))}</small></div><div><small>Store manager</small>${esc(p.manager_name || "not on file")} ${esc(p.manager_phone || "")}</div>
+          <div><small>Store told I am coming</small>${f.told_who ? esc(f.told_who) + " " + fmtD(f.told_at) : "NO. Call Colin before going."}</div><div><small>Drive</small>${p.stop?.drive_minutes != null ? p.stop.drive_minutes + " min" : ""}</div></div>
+        <table>${FACT_KEYS.map(([k, l]) => factLine(f, k, l)).join("")}</table>
+        ${p.plan ? `<div style="position:relative;margin-top:8pt;page-break-inside:avoid"><img src="${p.plan.url}" style="width:100%;display:block">${pins.map((i) => `<span style="position:absolute;left:${i.pin_x * 100}%;top:${i.pin_y * 100}%;transform:translate(-50%,-100%);width:22px;height:28px">${pinSvg(i.number, STATUS_HEX[i.status])}</span>`).join("")}</div>` : ""}
+        <h2>My items (${mine.length})</h2>
+        ${mine.map((it) => { const c = it.card || {}; return `<div class="box" style="page-break-inside:avoid;display:grid;grid-template-columns:1fr 160px;gap:10px"><div><b>#${it.number} ${esc(it.title)}</b> &middot; ${esc(roomOf(it, { plans: p.plan ? [p.plan] : [] }) || it.area || "")} &middot; ~${minutesOf(it)} min<br>
+          <b>Done =</b> ${esc(c.done_looks_like || "not on file")}<br><b>Photo:</b> ${esc(c.photo_proof || "after photo of the finished work")}<br><b>Tools:</b> ${esc((c.tools || []).map((t) => typeof t === "string" ? t : t.name).join(", ") || "not listed")}<br><b>Materials:</b> ${esc((c.materials || []).map((x) => `${x.qty || ""} ${x.unit || ""} ${x.name}`.trim()).join("; ") || "not listed")}<br>
+          ${c.dependency ? `<b>Depends on:</b> ${esc(c.dependency)}<br>` : ""}${c.safety ? `<b>Safety:</b> ${esc(c.safety)}<br>` : ""}${it.detail ? `<b>Note:</b> ${esc(it.detail)}` : ""}</div>
+          <div>${it.before.slice(0, 2).map((u) => `<img src="${u}" style="width:160px;height:110px;object-fit:cover;display:block;margin-bottom:4px">`).join("") || "<span style='font-size:9pt'>no before photo</span>"}</div></div>`; }).join("") || "<p>Nothing for me here.</p>"}
+        <h2>Not mine here</h2><table>${Object.entries(nm).filter(([, v]) => v.length).map(([k, v]) => `<tr><td style="width:34%"><b>${k === "by_owner" ? "By owner" : k === "sub" ? "Sub's items" : k}</b><br><small>"${NOT_MINE_LINE[k]}"</small></td><td>${v.map((i) => "#" + i.number + " " + esc(i.title)).join("<br>")}</td></tr>`).join("") || "<tr><td>none</td></tr>"}</table>`; }).join("")}
+    </div></div>`, { back: "My run" });
+}
+// ---------- admin: runs planner ----------
+async function renderRuns() {
+  if (S.me.role !== "admin") return go("");
+  shell(loading(), { back: "Stores" }); const r = await api("runs"); document.title = "Runs · Punchline";
+  shell(`<div class="h"><div><h1>Runs</h1><div class="sub">Plan the field helper's day: stores in order, start times, drive minutes. The helper sees it as "My run".</div></div><button class="btn sm ink" onclick="editRun()">+ Run</button></div>
+    <div class="card">${r.runs.map((x) => `<div class="person"><div class="top"><div><div class="nm">${fmtD(x.run_date)}${x.parties ? " &middot; " + esc(x.parties.name) : " &middot; any helper"}</div><div class="co">${x.run_stops.map((st) => `${esc(st.projects?.name || "")}${st.start_time ? " " + esc(st.start_time) : ""}${st.drive_minutes != null ? " (" + st.drive_minutes + " min drive)" : ""}`).join(" &rarr; ") || "no stops"}</div>${x.note ? `<div class="ct">${esc(x.note)}</div>` : ""}</div></div>
+      <div class="lnk"><button class="btn sm" onclick='editRun(${JSON.stringify(x).replace(/'/g, "&#39;")})'>Edit</button><button class="btn sm ghost" onclick="deleteRun('${x.id}')">Delete</button><a class="btn sm ghost" href="#/runsheet" onclick="S.runDate='${x.run_date}';setViewAs('helper')">Preview as helper</a></div></div>`).join("") || `<div class="empty">No runs planned.</div>`}</div>`, { back: "Stores" });
+}
+async function editRun(x) {
+  const b = S.boards[S.projects[0].slug] || await loadBoard(S.projects[0].slug);
+  const helpers = b.parties.filter((p) => p.role === "helper");
+  const stops = x?.run_stops || S.projects.filter((p) => p.released !== false && p.slug !== "peru" && p.slug !== "morris").map((p) => ({ project_id: p.id, start_time: "", drive_minutes: "" }));
+  const bg = sheet(`<h2>${x ? "Edit run" : "New run"}</h2>
+    <div class="two"><div class="field"><label>Date</label><input class="in" type="date" id="rn_date" value="${x?.run_date || new Date().toISOString().slice(0, 10)}"></div><div class="field"><label>Helper</label><select class="in" id="rn_helper"><option value="">Any field helper</option>${helpers.map((h) => `<option value="${h.id}" ${x?.helper_id === h.id ? "selected" : ""}>${esc(h.name)}</option>`).join("")}</select></div></div>
+    <div class="field"><label>Note</label><input class="in" id="rn_note" value="${esc(x?.note || "")}"></div>
+    <div class="field"><label>Stops in order (blank the store to drop it)</label><div id="rn_stops">${stops.map((st, i) => stopRow(i, st)).join("")}</div><button class="btn sm ghost" type="button" onclick="addStop()">+ stop</button></div>
+    <div class="btnrow"><button class="btn" id="c">Cancel</button><button class="btn primary" id="s">Save</button></div>`);
+  $("#c", bg).onclick = () => bg.remove();
+  $("#s", bg).onclick = async () => {
+    const rows = [...bg.querySelectorAll(".stoprow")].map((r) => ({ project_id: r.querySelector(".sp").value, start_time: r.querySelector(".ss").value.trim(), drive_minutes: parseInt(r.querySelector(".sd").value) || null })).filter((r) => r.project_id);
+    try { await api("run_save", { id: x?.id, run_date: $("#rn_date", bg).value, helper_id: $("#rn_helper", bg).value || null, note: $("#rn_note", bg).value.trim(), stops: rows }); bg.remove(); BRIEF.data = null; toast("Run saved"); renderRuns(); } catch (e) { toast(e.message, true); }
+  };
+}
+function stopRow(i, st) { return `<div class="stoprow" style="display:grid;grid-template-columns:1fr 80px 70px;gap:6px;margin-bottom:6px"><select class="in sp"><option value="">(drop)</option>${S.projects.map((p) => `<option value="${p.id}" ${st.project_id === p.id ? "selected" : ""}>${esc(p.name)}${p.released === false ? " (not released)" : ""}</option>`).join("")}</select><input class="in ss" placeholder="7:30" value="${esc(st.start_time || "")}"><input class="in sd" placeholder="drive min" value="${st.drive_minutes ?? ""}"></div>`; }
+function addStop() { const d = document.createElement("div"); d.innerHTML = stopRow(99, {}); $("#rn_stops").appendChild(d.firstChild); }
+async function deleteRun(id) { if (!confirm("Delete this run?")) return; try { await api("run_delete", { id }); BRIEF.data = null; renderRuns(); } catch (e) { toast(e.message, true); } }
+
 // ---------- sub: my work ----------
 async function renderWork() {
   shell(loading());
@@ -1300,7 +1571,7 @@ function renderProcess() {
       <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:12px">${STATUSES.map((s) => `<tr style="border-top:1px solid var(--line)"><td style="padding:6px 0">${stChip(s)}</td><td style="padding:6px 8px;color:var(--muted)">${esc(PLAIN[s])}</td></tr>`).join("")}</table></div>
     <div class="card" style="padding:16px;margin-top:12px"><h2 style="font-size:16px">The three types</h2>
       <p style="font-size:14px;line-height:1.5;margin:8px 0 0"><b>Punch</b> ties directly to an originally contracted scope item: correcting or finishing contract work. <b>C/O</b> is not in the original scope, or an owner-requested change to contract work already done; it is priced before it is worked. <b>Orig Scope - Gated</b> is contracted scope still open because it is waiting on an owner action or material.</p></div>
-  `, { back: subLike() ? "Your work" : "Stores" });
+  `, { back: helperView() ? "My run" : subLike() ? "Your work" : "Stores" });
 }
 
 boot();
