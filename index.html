@@ -11,6 +11,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23E4572E'/%3E%3Cpath d='M32 12c-8.3 0-15 6.5-15 14.6 0 10.6 15 25.4 15 25.4s15-14.8 15-25.4C47 18.5 40.3 12 32 12z' fill='%23fff'/%3E%3Ccircle cx='32' cy='27' r='5.5' fill='%23E4572E'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@87.5,400;87.5,500;87.5,600;87.5,700;87.5,800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" integrity="sha512-qZvrmS2ekKPF2mSznTQsxqPgnpkI4DNTlrdUmTzrDgektczlKNRRhy5X5AAOnx5S09ydFYWWNSfcEqDTTHgtNA==" crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
 <style>
 :root{
@@ -254,7 +255,7 @@ textarea.ta{min-height:76px;resize:vertical}
 <script>
 // ---------- config ----------
 const API = "https://wwwtpeeywpdiazhwzwlr.supabase.co/functions/v1/api";
-const BUILD = "20261028-082532"; // stamped by tools/publish.py
+const BUILD = "20261028-091601"; // stamped by tools/publish.py
 const STATUSES = ["Draft","Open","Work Required","In Dispute","Blocked","Ready for Review","Not Accepted","Ready to Close","Closed","Removed"];
 const JP_STATUS = {"Draft":0,"Open":0,"Work Required":0,"In Dispute":0,"Blocked":0,"Not Accepted":0,"Ready for Review":1,"Ready to Close":1,"Closed":2,"Removed":2};
 const JP_PROJECT = {};
@@ -294,6 +295,15 @@ function roomOf(it, b) {
 }
 const ballChip = (it, b) => `<span class="chip type" style="font-weight:700">&#9679; ${esc(ballInCourt(it, b))}</span>`;
 const TYPES = ["Punch","C/O","Orig Scope - Gated"];
+const TAGS = ["life safety", "door/lock"]; // tags that make verification on site (with electrical trade)
+const isHelperParty = (b, id) => !!(b?.parties || []).find((p) => p.id === id && p.role === "helper");
+function verifyLine(it, b) {
+  const m = it.verify_method === "on site" ? "On site" : "From the photo";
+  if (it.verified_at) return `${m} &middot; verified ${esc(it.verified_how || "")} by ${esc(partyName(b, it.verified_by) || "Alleato")} ${fmtDT(it.verified_at)}`;
+  return m + (it.verify_method === "on site" ? " (remote verification refused)" : "");
+}
+const flagChips = (it, b) => { const f = b?.flags?.[it.id]; if (!f) return ""; return `${f.no_response ? `<span class="chip type co">No response since ${fmtD(it.last_notified_at)}</span>` : ""}${f.owner_overdue ? `<span class="chip type co">Owner review overdue (since ${fmtD(f.ready_since)})</span>` : ""}`; };
+const tagChips = (it) => (it.tags || []).map((t) => `<span class="chip type gated">${esc(t)}</span>`).join("") + (it.verify_method === "on site" ? `<span class="chip type gated">Verify on site</span>` : "");
 
 // ---------- state ----------
 const S = { k: null, me: null, projects: null, boards: {}, work: null, filter: "all", type: "", who: "", group: "", placing: null, planId: null };
@@ -315,10 +325,11 @@ function peopleCard() {
 }
 const HELPER_TABS = (on) => `<div class="tabs">${[["run", "My run"], ["bring", "Bring"], ["notmine", "Not mine"], ["stores", "Stores"], ["eod", "End of day"]].map(([k, l]) => `<a class="${on === k ? "on" : ""}" href="#/${k}">${l}</a>`).join("")}</div>${readOnly() ? `<div class="sub" style="margin:-6px 0 10px">Viewing as the field helper, read only. <a href="#" onclick="event.preventDefault();setViewAs(null)">Back to Alleato view</a></div>` : ""}`;
 const FACT_KEYS = [
-  ["hours", "Store hours"], ["entrance", "Which door to use"], ["parking", "Where to park and unload"], ["checkin_rule", "Check-in rule"], ["customer_hours_rules", "Rules during customer hours"],
+  ["drive", "Drive from the previous stop (estimate)"], ["hours", "Store hours"], ["entrance", "Which door to use"], ["parking", "Where to park and unload"], ["checkin_rule", "Check-in rule"], ["customer_hours_rules", "Rules during customer hours"],
   ["panel", "Electrical panel: where, labeled?"], ["water_shutoff", "Water shut-off"], ["ceiling", "Ceiling type and height"], ["attic_stock", "Attic stock (tiles, paint) and where"], ["paint_colors", "Paint colors by area"],
-  ["dumpster", "Dumpster / haul-off rule"], ["restroom", "Restroom use"], ["after_hours", "Alarm / after-hours access"], ["hazards", "Hazards and limits"], ["off_limits", "Areas Goodwill keeps off limits"], ["dock_traffic", "Donation dock traffic"],
+  ["dumpster", "Dumpster / haul-off rule"], ["restroom", "Restroom use"], ["after_hours", "Alarm / after-hours access"], ["hazards", "Hazards and limits"], ["off_limits", "Areas Goodwill keeps off limits"], ["dock_traffic", "Donation dock traffic"], ["notes", "Store notes"],
 ];
+const FACT_LISTS = [["context", "More about this store"], ["general", "Applies to every store"]]; // lists of {topic, value, source}
 const NOT_MINE_LINE = { "C/O": "That is a change order Alleato is pricing; it is not part of today's punch.", "Orig Scope - Gated": "That is contract work waiting on Goodwill (a decision or material); not today.", "by_owner": "That is on Goodwill's contract; their vendor handles it.", "sub": "The sub is scheduled for that; Alleato coordinates it." };
 const BLOCK_REASONS = ["Blocked by something on site", "Needs material", "Store said no", "Other"];
 let BRIEF = { date: null, data: null };
@@ -465,8 +476,9 @@ async function renderHome() {
   const cards = S.projects.map((p) => {
     const b = S.boards[p.slug]; const c = countsFor(b.items);
     const hot = me.role === "owner" ? b.items.filter((i) => i.status === "Ready to Close").length : b.items.filter((i) => i.status === "Ready for Review").length;
+    const fl = Object.values(b.flags || {}); const nr = fl.filter((f) => f.no_response).length, oo = fl.filter((f) => f.owner_overdue).length;
     return `<a class="card store" href="#/p/${p.slug}">
-      <h3>${esc(p.name)}</h3><div class="meta">${esc(p.job_no || "")} &middot; ${esc(p.address || "")}</div>
+      <h3>${esc(p.name)}</h3><div class="meta">${esc(p.job_no || "")} &middot; ${esc(p.address || "")}</div>${nr || oo ? `<div class="meta" style="color:var(--flag);font-weight:700">${nr ? nr + " no response" : ""}${nr && oo ? " &middot; " : ""}${oo ? oo + " owner review overdue" : ""}</div>` : ""}
       <div class="nums"><div><b>${c.open}</b>open</div><div class="hot"><b>${hot}</b>${me.role === "owner" ? "to accept" : "sub says done"}</div><div class="done"><b>${c.closed}</b>closed</div></div></a>`;
   }).join("");
   const allOpen = S.projects.reduce((n, p) => n + countsFor(S.boards[p.slug].items).open, 0);
@@ -499,6 +511,7 @@ async function renderBoard(slug) {
     closed: { label: "Closed", f: (i) => i.status === "Closed" },
     removed: { label: "Removed", f: (i) => i.status === "Removed" || i.status === "Draft" },
   };
+  if (me.role === "admin") F.flagged = { label: "Flagged", f: (i) => !!(b.flags?.[i.id]?.no_response || b.flags?.[i.id]?.owner_overdue) };
   if (me.role !== "admin") { F.removed = { label: "Removed", f: (i) => i.status === "Removed" }; }
   F.all.f = (i) => me.role === "admin" || i.status !== "Removed";
   if (me.role !== "admin") delete F.withsub;
@@ -512,8 +525,8 @@ async function renderBoard(slug) {
     <a class="item ${it.plan_id ? "pinned" : ""}" href="#/p/${slug}/i/${it.id}">
       <div class="num">${it.number}</div>
       <div><div class="t">${esc(it.title)}</div>
-        <div class="m">${stChip(it.status)}${tyChip(it.type)}${roomOf(it, b) ? `<span>${esc(roomOf(it, b))}</span>` : ""}${it.assignee_id ? `<span class="who">${esc(partyName(b, it.assignee_id))}</span>` : `<span style="color:var(--flag);font-weight:600">unassigned</span>`}${photoCount(it.id) ? `<span class="cam">&#128247; ${photoCount(it.id)}</span>` : ""}${isOverdue(it) ? `<span style="color:var(--s-notacc);font-weight:700">overdue ${fmtD(it.due_date)}</span>` : it.due_date ? `<span>due ${fmtD(it.due_date)}</span>` : ""}</div>
-        ${!["Closed", "Removed", "Draft"].includes(it.status) ? `<div class="m" style="margin-top:4px">${ballChip(it, b)}${it.by_owner ? `<span class="chip type gated">By owner</span>` : ""}${it.walk_excluded ? `<span class="chip type" style="color:var(--s-notacc)">not in the walk</span>` : ""}</div>` : ""}
+        <div class="m">${stChip(it.status)}${tyChip(it.type)}${roomOf(it, b) ? `<span>${esc(roomOf(it, b))}</span>` : ""}${it.assignee_id ? `<span class="who">${esc(partyName(b, it.assignee_id))}</span>` : `<span style="color:var(--flag);font-weight:600">unassigned</span>`}${photoCount(it.id) ? `<span class="cam">&#128247; ${photoCount(it.id)}</span>` : ""}${isOverdue(it) ? `<span style="color:var(--s-notacc);font-weight:700">overdue ${fmtD(it.due_date)}</span>` : it.due_date ? `<span>due ${fmtD(it.due_date)}</span>` : isHelperParty(b, it.assignee_id) ? `<span>by the run</span>` : ""}</div>
+        ${!["Closed", "Removed", "Draft"].includes(it.status) ? `<div class="m" style="margin-top:4px">${ballChip(it, b)}${me.role === "admin" ? flagChips(it, b) : ""}${it.verify_method === "on site" && me.role !== "owner" ? `<span class="chip type gated">Verify on site</span>` : ""}${it.by_owner ? `<span class="chip type gated">By owner</span>` : ""}${it.walk_excluded ? `<span class="chip type" style="color:var(--s-notacc)">not in the walk</span>` : ""}</div>` : ""}
       </div></a>`;
   let rows;
   if (byRoom) {
@@ -575,11 +588,12 @@ function lockBanner(b) {
   if (me.role === "admin") return `<div class="sub" style="margin:-4px 0 12px">List open for adds. ${b.log.length ? `Last: ${esc(b.log[b.log.length - 1].action)} by ${esc(b.log[b.log.length - 1].parties?.name || "")} ${fmtD(b.log[b.log.length - 1].created_at)}.` : ""} <button class="btn sm ghost" onclick="lockList('${p.slug}')">Freeze now</button></div>`;
   return "";
 }
+async function lockListNote(r) { if (r && r.due_dates_set) toast(`${r.due_dates_set} due date${r.due_dates_set === 1 ? "" : "s"} set to ${fmtD(r.due)} (10 business days)`); }
 async function lockList(slug) {
   const b = S.boards[slug];
   const note = await ask(S.me.role === "owner" ? `Freeze the ${b.project.name} list as it stands (${b.items.filter((i) => i.status !== "Draft").length} items)? Add a note if you like.` : `Freeze the ${b.project.name} list? Note (optional)`, "", false, "Freeze");
   if (note === null) return;
-  try { await api("lock", { project_id: b.project.id, note }); toast("List frozen"); await loadBoard(slug, true); render(); } catch (e) { toast(e.message, true); }
+  try { const r = await api("lock", { project_id: b.project.id, note }); toast("List frozen"); await loadBoard(slug, true); render(); lockListNote(r); } catch (e) { toast(e.message, true); }
 }
 async function unlockList(slug) {
   const b = S.boards[slug];
@@ -598,7 +612,7 @@ async function renderItem(slug, id) {
   const me = S.me;
   const photos = b.photos.filter((p) => p.item_id === id && !p.removed_at);
   const removedPhotos = b.photos.filter((p) => p.item_id === id && p.removed_at);
-  const before = photos.filter((p) => p.kind === "before"), after = photos.filter((p) => p.kind === "after");
+  const before = photos.filter((p) => p.kind === "before"), after = photos.filter((p) => p.kind === "after"), verify = photos.filter((p) => p.kind === "verify");
   const plan = b.plans.find((p) => p.id === it.plan_id);
   const photoGrid = (arr, tag) => arr.map((p) => `<a href="${p.url}" target="_blank" rel="noopener"><img src="${p.url}" alt="${tag} photo" loading="lazy"><span class="tag">${tag}</span>${me.role === "admin" ? `<button class="del" title="Remove photo" onclick="event.preventDefault();delPhoto('${slug}','${p.id}')">&times;</button>` : ""}</a>`).join("");
   // actions by role + status
@@ -612,11 +626,12 @@ async function renderItem(slug, id) {
       if (helperView()) A.push(`<button class="btn warn" onclick="cantFinish('${slug}','${id}')">Can't finish</button>`);
       else if (st !== "In Dispute") A.push(`<button class="btn ghost" onclick="move('${slug}','${id}','In Dispute','Why are you disputing this item?',true)">Dispute this item</button>`);
     }
-    if (st === "Ready for Review") A.push(`<div class="empty" style="padding:12px">Sent to Alleato for review. Add more photos any time.</div><button class="btn" onclick="addPhotos('${slug}','${id}','after')">&#128247; Add another photo</button>`);
+    if (st === "Ready for Review") A.push(`<div class="empty" style="padding:12px">Sent to Alleato for review. Add more photos any time.</div><button class="btn" onclick="addPhotos('${slug}','${id}','after')">&#128247; Add another photo</button>${helperView() ? `<button class="btn ok" onclick="verifyOnSite('${slug}','${id}')">&#10003; Verified on site (verification photo)</button>` : ""}`);
     if (["Ready to Close", "Closed"].includes(st)) A.push(`<div class="empty" style="padding:12px">${st === "Closed" ? "Accepted by the owner. Nothing more to do." : "Verified by Alleato, waiting on the owner."}</div>`);
   }
   if (me.role === "owner" && !readOnly()) {
     if (st === "Ready to Close") {
+      A.push(`<div class="empty" style="padding:12px">Verification: ${verifyLine(it, b)}</div>`);
       A.push(`<button class="btn ok" onclick="move('${slug}','${id}','Closed','Any note for the record? (optional)')">&#10003; Accept and close</button>`);
       A.push(`<button class="btn warn" onclick="move('${slug}','${id}','Not Accepted','What still needs doing?',true)">Send it back</button>`);
     } else if (st === "Ready for Review") A.push(`<div class="empty" style="padding:12px">The sub says it is done. Alleato verifies next; you will see Accept here after that.</div>`);
@@ -627,6 +642,7 @@ async function renderItem(slug, id) {
     A.push(`<div class="btnrow">
       <button class="btn" onclick="addPhotos('${slug}','${id}','before')">&#128247; Before</button>
       <button class="btn" onclick="addPhotos('${slug}','${id}','after')">&#128247; After</button>
+      <button class="btn" onclick="addPhotos('${slug}','${id}','verify')">&#128247; Verify</button>
       <a class="btn" href="#/p/${slug}/plan/${id}">&#128205; ${it.plan_id ? "Move pin" : "Pin on plan"}</a>
       <button class="btn" onclick="editItem('${slug}','${id}')">&#9998; Edit</button>
       <button class="btn" onclick="notified('${slug}','${id}')">&#128222; Told them</button>
@@ -634,7 +650,10 @@ async function renderItem(slug, id) {
     const row2 = [];
     if (["Open", "Draft", "Not Accepted", "In Dispute", "Blocked"].includes(st) && it.assignee_id) row2.push(`<button class="btn ink" onclick="move('${slug}','${id}','Work Required','Note to the sub (optional)')">Send to sub</button>`);
     if (st === "Draft" && !it.assignee_id) row2.push(`<button class="btn ink" onclick="move('${slug}','${id}','Open','')">Publish</button>`);
-    if (["Ready for Review", "Work Required", "Open", "Not Accepted", "In Dispute", "Blocked"].includes(st)) row2.push(`<button class="btn ok" onclick="move('${slug}','${id}','Ready to Close','Verified on site? Add a note (optional)')">&#10003; Verified, ready for owner</button>`);
+    if (["Ready for Review", "Work Required", "Open", "Not Accepted", "In Dispute", "Blocked"].includes(st)) {
+      if (it.verify_method === "on site") row2.push(`<button class="btn ok" onclick="verifyOnSite('${slug}','${id}')">&#10003; Verified on site (verification photo)</button><span class="sub" style="align-self:center">Marked Verify on site: remote verification is refused.</span>`);
+      else row2.push(`<button class="btn ok" onclick="move('${slug}','${id}','Ready to Close','Verified from the after photo. Any note? (optional)',false,'photo')">&#10003; Verified from the photo</button><button class="btn" onclick="verifyOnSite('${slug}','${id}')">Verified on site</button>`);
+    }
     if (st === "Ready for Review") row2.push(`<button class="btn warn" onclick="move('${slug}','${id}','Not Accepted','What still needs doing?',true)">Send back to sub</button>`);
     if (["Ready to Close", "Ready for Review"].includes(st)) row2.push(`<button class="btn" onclick="move('${slug}','${id}','Closed','Closing on the owner\\'s behalf? Say who accepted it.',true)">Close</button>`);
     if (st === "Closed") row2.push(`<button class="btn ghost" onclick="move('${slug}','${id}','Work Required','Why is it being reopened?',true)">Reopen</button>`);
@@ -645,13 +664,14 @@ async function renderItem(slug, id) {
   }
   shell(`
     <div class="card detail">
-      <div class="head"><div class="row"><span class="num">#${it.number} &middot; ${esc(b.project.name.toUpperCase())}</span>${stChip(st)}${tyChip(it.type)}${it.by_owner ? `<span class="chip type gated">By owner</span>` : ""}${it.priority === "High" ? `<span class="chip type co">High priority</span>` : ""}</div>
+      <div class="head"><div class="row"><span class="num">#${it.number} &middot; ${esc(b.project.name.toUpperCase())}</span>${stChip(st)}${tyChip(it.type)}${it.by_owner ? `<span class="chip type gated">By owner</span>` : ""}${it.priority === "High" ? `<span class="chip type co">High priority</span>` : ""}${me.role !== "owner" ? tagChips(it) : ""}${me.role === "admin" ? flagChips(it, b) : ""}</div>
         <h1>${esc(it.title)}</h1>${it.detail ? `<div class="notes" style="margin-top:8px;color:var(--muted)">${esc(it.detail)}</div>` : ""}</div>
       <div class="facts">
         <div><small>Where</small>${esc(roomOf(it, b) || it.area || "See plan")}${it.walk_excluded ? ` <span class="chip type" style="color:var(--s-notacc)">not in the walk</span>` : ""}</div>
         <div><small>Responsible</small>${it.assignee_id ? esc(partyFull(b, it.assignee_id)) : `<span style="color:var(--flag)">Unassigned</span>`}</div>
-        <div><small>Due</small>${it.due_date ? (isOverdue(it) ? `<span style="color:var(--s-notacc);font-weight:700">${fmtD(it.due_date)} overdue</span>` : fmtD(it.due_date)) : "No date set"}</div>
+        <div><small>Due</small>${it.due_date ? (isOverdue(it) ? `<span style="color:var(--s-notacc);font-weight:700">${fmtD(it.due_date)} overdue</span>` : fmtD(it.due_date)) : isHelperParty(b, it.assignee_id) ? "By the run" : "No date set"}</div>
         <div><small>Ball in court</small><b>${esc(ballInCourt(it, b))}</b></div>
+        ${me.role !== "owner" || it.verified_at ? `<div class="full"><small>Verification</small>${verifyLine(it, b)}${me.role === "admin" && !readOnly() ? ` <button class="lnk" onclick="setVerify('${slug}','${id}')">change</button>` : ""}</div>` : ""}
         ${me.role === "admin" ? `<div><small>Last told</small>${it.last_notified_at ? `${fmtD(it.last_notified_at)} by ${esc(it.last_notified_how)}` : "never"}</div>` : ""}
         <div class="full"><small>Means</small>${esc(PLAIN[st])}</div>
         ${it.trade ? `<div class="full"><small>Trade</small>${esc(it.trade)}</div>` : ""}
@@ -660,8 +680,8 @@ async function renderItem(slug, id) {
         <a href="#/p/${slug}/plan/${id}" class="minimap" style="display:block"><img src="${plan.url}" alt="" style="object-position:${(it.pin_x * 100).toFixed(1)}% ${(it.pin_y * 100).toFixed(1)}%;object-fit:none;transform:scale(.55);transform-origin:center"><span class="pin" style="left:50%;top:50%;width:30px;height:38px">${pinSvg(it.number, STATUS_HEX[st])}</span></a></div>` : me.role === "admin" ? `<div class="sec"><h3>On the plan</h3><a class="btn sm" href="#/p/${slug}/plan/${id}">&#128205; Drop a pin so the sub can find it</a></div>` : ""}
       ${it.notes && me.role !== "owner" && !helperView() ? `<div class="sec"><h3>Notes</h3><div class="notes">${esc(it.notes)}</div></div>` : ""}
       ${(helperView() || me.role === "admin") ? `<div id="cardsec"></div>` : ""}
-      <div class="sec"><h3>Photos <span style="font-weight:500;text-transform:none;letter-spacing:0">${before.length} before &middot; ${after.length} after</span></h3>
-        ${photos.length ? `<div class="photos">${photoGrid(before, "before")}${photoGrid(after, "after")}</div>` : `<div class="empty" style="padding:10px">No photos yet.${subLike() ? " Add one of the finished work and the owner can accept it from their desk." : ""}</div>`}
+      <div class="sec"><h3>Photos <span style="font-weight:500;text-transform:none;letter-spacing:0">${before.length} before &middot; ${after.length} after${verify.length ? ` &middot; ${verify.length} verification` : ""}</span></h3>
+        ${photos.length ? `<div class="photos">${photoGrid(before, "before")}${photoGrid(after, "after")}${photoGrid(verify, "verify")}</div>` : `<div class="empty" style="padding:10px">No photos yet.${subLike() ? " Add one of the finished work and the owner can accept it from their desk." : ""}</div>`}
         ${removedPhotos.length && me.role === "admin" ? `<div class="sub" style="margin-top:10px">Removed, kept on record</div><div class="photos" style="margin-top:6px">${removedPhotos.map((p) => `<a href="${p.url}" target="_blank" rel="noopener" style="opacity:.4;filter:grayscale(1)" title="${esc(p.removed_reason || "")}"><img src="${p.url}" alt="removed photo" loading="lazy"><span class="tag">removed ${fmtD(p.removed_at)}</span></a>`).join("")}</div>` : ""}</div>
       <div class="sec"><div class="actions">${A.join("")}</div></div>
       <div class="sec"><h3>History</h3><ul class="hist" id="hist"><li><span class="dot"></span><span class="meta">Loading</span></li></ul>
@@ -690,6 +710,8 @@ async function loadHistory(id) {
       else if (e.action === "pinned") what = "Pin moved";
       else if (e.action === "notified") what = "Told them";
       else if (e.action === "photo removed") what = "Photo removed";
+      else if (e.action === "verify method") what = "Verification method changed";
+      else if (e.action === "card") what = "Item card updated";
       const noteTxt = e.note && e.note.startsWith("{") ? diffText(e.note) : e.note;
       return `<li><span class="dot ${e.action}"></span><div>${what}<div class="meta">${esc(who)} &middot; ${fmtDT(e.created_at)}</div>${noteTxt && e.action !== "photo" ? `<div class="note">${esc(noteTxt)}</div>` : ""}</div></li>`;
     }).join("") || `<li><span class="dot"></span><span class="meta">No history.</span></li>`;
@@ -718,12 +740,26 @@ function subComplete(slug, id) {
   if (!after.length) { toast("Take a photo of the finished work first"); return addPhotos(slug, id, "after"); }
   return move(slug, id, "Ready for Review", "Anything Alleato should know? (optional)");
 }
-async function move(slug, id, to, prompt, required) {
+async function move(slug, id, to, prompt, required, verifyHow) {
   let note = "";
   if (prompt) { note = await ask(prompt, "", required, to); if (note === null) return; }
   const cur = (S.boards[slug]?.items || []).find((i) => i.id === id);
-  try { await api("transition", { id, to, note, from_status: cur?.status }); toast(`Now: ${to}`); await loadBoard(slug, true); render(); }
+  try { await api("transition", { id, to, note, from_status: cur?.status, verify_how: verifyHow || undefined }); toast(`Now: ${to}`); await loadBoard(slug, true); render(); }
   catch (e) { toast(e.message, true); if (/changed since|just changed/.test(e.message)) { await loadBoard(slug, true); render(); } }
+}
+// Rule 4: on-site verification needs a verification photo taken there; then the item goes to the owner.
+async function verifyOnSite(slug, id) {
+  const b = S.boards[slug]; const vp = (b?.photos || []).filter((p) => p.item_id === id && p.kind === "verify" && !p.removed_at);
+  if (!vp.length) { toast("Take the verification photo first"); return addPhotos(slug, id, "verify"); }
+  return move(slug, id, "Ready to Close", "Verified on site. What did you check? (optional)", false, "on site");
+}
+async function setVerify(slug, id) {
+  const b = S.boards[slug]; const it = b.items.find((i) => i.id === id);
+  const bg = sheet(`<h2>Verification method for #${it.number}</h2><div class="sub" style="margin-bottom:10px">On site is the rule for electrical, life safety, door and lock function, and anything the owner sent back once. Photo is for cosmetic work the after photo plainly shows.</div>
+    <div class="field"><label>Method</label><select class="in" id="vm"><option value="photo" ${it.verify_method !== "on site" ? "selected" : ""}>From the photo</option><option value="on site" ${it.verify_method === "on site" ? "selected" : ""}>On site</option></select></div>
+    <div class="field"><label>Why (goes on the record)</label><input class="in" id="vn"></div><div class="btnrow"><button class="btn" id="c">Cancel</button><button class="btn ink" id="s">Save</button></div>`);
+  $("#c", bg).onclick = () => bg.remove();
+  $("#s", bg).onclick = async () => { try { await api("update", { id, verify_method: $("#vm", bg).value, note: $("#vn", bg).value.trim() }); bg.remove(); await loadBoard(slug, true); render(); toast("Saved"); } catch (e) { toast(e.message, true); } };
 }
 async function toggleWalk(slug, id, excluded) {
   try { await api("update", { id, walk_excluded: excluded, note: excluded ? "left out of the walk" : "put back in the walk" }); await loadBoard(slug, true); render(); } catch (e) { toast(e.message, true); }
@@ -754,9 +790,11 @@ function shrink(file, max = 1600, q = 0.82) {
     img.src = url;
   });
 }
-function addPhotos(slug, id, kind) {
+function addPhotos(slug, id, kind, skipGuide) {
+  const b = S.boards[slug]; const guide = (b?.photos || []).find((p) => p.item_id === id && p.kind === "before" && !p.removed_at);
+  if (!skipGuide && (kind === "after" || kind === "verify") && guide) return guidedShot(slug, id, kind, guide.url);
   const inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*"; inp.multiple = true;
-  if (kind === "after" && subLike()) inp.capture = "environment";
+  if ((kind === "after" || kind === "verify") && subLike()) inp.capture = "environment";
   inp.onchange = async () => {
     const files = [...inp.files]; if (!files.length) return;
     let n = 0;
@@ -769,6 +807,44 @@ function addPhotos(slug, id, kind) {
   inp.click();
 }
 
+// Rule 3 of completion: the after photo is shot from the same spot as the before photo. The camera preview shows the
+// before photo faintly on top; where the page cannot open the camera, the before photo sits beside the camera button.
+async function guidedShot(slug, id, kind, beforeUrl) {
+  const label = kind === "verify" ? "verification" : "after";
+  const fallback = () => {
+    const bg = sheet(`<h2>Shoot the ${label} photo from the same spot</h2><div class="sub" style="margin-bottom:8px">This is the before photo. Stand where it was taken, frame it the same way, then open the camera.</div>
+      <img src="${beforeUrl}" style="width:100%;border-radius:10px;display:block"><div class="btnrow" style="margin-top:12px"><button class="btn" id="c">Cancel</button><button class="btn primary" id="s">&#128247; Open the camera</button></div>`);
+    $("#c", bg).onclick = () => bg.remove(); $("#s", bg).onclick = () => { bg.remove(); addPhotos(slug, id, kind, true); };
+  };
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return fallback();
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1600 } }, audio: false }); }
+  catch { return fallback(); }
+  const bg = document.createElement("div"); bg.className = "sheet-bg"; bg.style.background = "#000";
+  bg.innerHTML = `<div style="position:fixed;inset:0;display:flex;flex-direction:column;background:#000;color:#fff">
+    <div style="position:relative;flex:1;overflow:hidden"><video id="gv" autoplay playsinline muted style="width:100%;height:100%;object-fit:contain"></video>
+      <img id="gi" src="${beforeUrl}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:contain;opacity:.38;pointer-events:none">
+      <div style="position:absolute;left:0;right:0;top:10px;text-align:center;font-size:13px;text-shadow:0 1px 3px #000">Line up the faint before photo, then shoot</div></div>
+    <div style="display:flex;gap:10px;justify-content:center;align-items:center;padding:14px;background:#111">
+      <button class="btn" id="gc" style="background:#333;color:#fff;border-color:#444">Cancel</button>
+      <button class="btn" id="gg" style="background:#333;color:#fff;border-color:#444">Guide off</button>
+      <button id="gs" style="width:64px;height:64px;border-radius:50%;border:4px solid #fff;background:#DB802D"></button>
+      <button class="btn" id="gf" style="background:#333;color:#fff;border-color:#444">Camera app</button></div></div>`;
+  document.body.appendChild(bg);
+  const v = $("#gv", bg); v.srcObject = stream;
+  const stop = () => { try { stream.getTracks().forEach((t) => t.stop()); } catch {} bg.remove(); };
+  $("#gc", bg).onclick = stop;
+  $("#gg", bg).onclick = () => { const g = $("#gi", bg); g.style.display = g.style.display === "none" ? "" : "none"; $("#gg", bg).textContent = g.style.display === "none" ? "Guide on" : "Guide off"; };
+  $("#gf", bg).onclick = () => { stop(); addPhotos(slug, id, kind, true); };
+  $("#gs", bg).onclick = async () => {
+    try {
+      const w = v.videoWidth, h = v.videoHeight; if (!w) return toast("Camera not ready yet", true);
+      const sc = Math.min(1, 1600 / Math.max(w, h)); const c = document.createElement("canvas"); c.width = Math.round(w * sc); c.height = Math.round(h * sc);
+      c.getContext("2d").drawImage(v, 0, 0, c.width, c.height); const data = c.toDataURL("image/jpeg", 0.82);
+      stop(); toast("Uploading"); await api("upload", { id, kind, data }); toast(`${label} photo added`); await loadBoard(slug, true); render();
+    } catch (e) { toast(e.message, true); }
+  };
+}
 function itemForm(b, it = {}) {
   const subs = b.parties.filter((p) => p.role !== "owner").slice().sort((a, c) => (a.role === "helper" ? 0 : a.role === "admin" ? 1 : 2) - (c.role === "helper" ? 0 : c.role === "admin" ? 1 : 2) || (a.company || "").localeCompare(c.company || ""));
   return `
@@ -780,12 +856,15 @@ function itemForm(b, it = {}) {
     <div class="two"><div class="field"><label>Trade</label><input class="in" id="f_trade" value="${esc(it.trade || "")}" placeholder="Electrical"></div>
       <div class="field"><label>Priority</label><select class="in" id="f_pri">${["Low", "Normal", "High"].map((p) => `<option ${(it.priority || "Normal") === p ? "selected" : ""}>${p}</option>`).join("")}</select></div></div>
     <div class="field"><label style="display:inline-flex;gap:8px;align-items:center;text-transform:none;letter-spacing:0"><input type="checkbox" id="f_byowner" ${it.by_owner ? "checked" : ""}> By owner (their vendor does it; ball stays with the owner; no sub link)</label></div>
+    <div class="two"><div class="field"><label>Tags (verify on site)</label><div style="display:flex;gap:14px;flex-wrap:wrap;padding:6px 0">${TAGS.map((t) => `<label style="display:inline-flex;gap:6px;align-items:center;text-transform:none;letter-spacing:0;font-size:14px"><input type="checkbox" class="f_tag" value="${t}" ${(it.tags || []).includes(t) ? "checked" : ""}> ${t}</label>`).join("")}</div></div>
+      <div class="field"><label>Verification</label><select class="in" id="f_verify"><option value="">Default (electrical, life safety, door/lock = on site)</option><option value="photo" ${it.verify_method === "photo" ? "selected" : ""}>From the photo</option><option value="on site" ${it.verify_method === "on site" ? "selected" : ""}>On site</option></select></div></div>
     <div class="field"><label>Detail for the sub (they see this)</label><textarea class="ta" id="f_detail">${esc(it.detail || "")}</textarea></div>
     <div class="field"><label>Alleato notes (owner does not see)</label><textarea class="ta" id="f_notes">${esc(it.notes || "")}</textarea></div>`;
 }
 function readForm(bg) {
   return { title: $("#f_title", bg).value.trim(), type: $("#f_type", bg).value, area: $("#f_area", bg).value.trim(), assignee_id: $("#f_who", bg).value || null,
-    due_date: $("#f_due", bg).value || null, trade: $("#f_trade", bg).value.trim(), priority: $("#f_pri", bg).value, detail: $("#f_detail", bg).value.trim(), notes: $("#f_notes", bg).value.trim(), by_owner: $("#f_byowner", bg).checked };
+    due_date: $("#f_due", bg).value || null, trade: $("#f_trade", bg).value.trim(), priority: $("#f_pri", bg).value, detail: $("#f_detail", bg).value.trim(), notes: $("#f_notes", bg).value.trim(), by_owner: $("#f_byowner", bg).checked,
+    tags: [...bg.querySelectorAll(".f_tag:checked")].map((x) => x.value), verify_method: $("#f_verify", bg).value };
 }
 async function newItem(slug) {
   const b = await loadBoard(slug);
@@ -793,7 +872,7 @@ async function newItem(slug) {
     <div class="btnrow"><button class="btn" id="c">Cancel</button><button class="btn" id="d">Save as draft</button><button class="btn primary" id="s">Save &amp; send</button></div>`);
   $("#c", bg).onclick = () => bg.remove();
   const save = async (status) => {
-    const f = readForm(bg); if (!f.title) return toast("Say what needs doing", true);
+    const f = readForm(bg); if (!f.title) return toast("Say what needs doing", true); if (!f.verify_method) delete f.verify_method;
     try { const r = await api("create", { project_id: b.project.id, ...f, status: status || (f.assignee_id ? "Work Required" : "Open") }); bg.remove(); await loadBoard(slug, true); go(`#/p/${slug}/i/${r.item.id}`); toast(`#${r.item.number} saved`); }
     catch (e) { toast(e.message, true); }
   };
@@ -803,7 +882,12 @@ async function editItem(slug, id) {
   const b = await loadBoard(slug); const it = b.items.find((i) => i.id === id);
   const bg = sheet(`<h2>Edit #${it.number}</h2>${itemForm(b, it)}<div class="btnrow"><button class="btn" id="c">Cancel</button><button class="btn primary" id="s">Save</button></div>`);
   $("#c", bg).onclick = () => bg.remove();
-  $("#s", bg).onclick = async () => { const f = readForm(bg); try { await api("update", { id, ...f }); bg.remove(); await loadBoard(slug, true); render(); toast("Saved"); } catch (e) { toast(e.message, true); } };
+  $("#s", bg).onclick = async () => {
+    const f = readForm(bg);
+    if (!f.verify_method || f.verify_method === it.verify_method) delete f.verify_method;
+    else { const note = await ask("Why does the verification method change? (goes on the record)", "", true, "Save"); if (note === null) return; f.note = note; }
+    try { await api("update", { id, ...f }); bg.remove(); await loadBoard(slug, true); render(); toast("Saved"); } catch (e) { toast(e.message, true); }
+  };
 }
 
 // ---------- plan ----------
@@ -1059,17 +1143,18 @@ async function renderBring() {
     ${peopleCard()}`);
 }
 function notMineGroups(B, pid) {
-  const g = { "C/O": [], "Orig Scope - Gated": [], by_owner: [], sub: [] };
-  for (const it of storeItems(B, pid)) { if (it.mine || ["Closed"].includes(it.status)) continue; if (it.by_owner) g.by_owner.push(it); else if (it.type !== "Punch") g[it.type].push(it); else g.sub.push(it); }
+  const g = { undecided: [], "C/O": [], "Orig Scope - Gated": [], by_owner: [], sub: [] };
+  for (const it of storeItems(B, pid)) { if (it.mine || ["Closed"].includes(it.status)) continue; if (it.card?.type_note) g.undecided.push(it); else if (it.by_owner) g.by_owner.push(it); else if (it.type !== "Punch") g[it.type].push(it); else g.sub.push(it); }
   return g;
 }
 async function renderNotMine() {
   shell(loading());
   const B = await loadBrief(); const stores = runStores(B).length ? runStores(B) : B.stores;
   document.title = "Not mine · Punchline";
-  const label = { "C/O": "Change orders", "Orig Scope - Gated": "Contract work waiting on Goodwill", by_owner: "On Goodwill's contract (their vendor)", sub: "A sub's items" };
+  const label = { undecided: "Type undecided (Colin decides)", "C/O": "Change orders", "Orig Scope - Gated": "Contract work waiting on Goodwill", by_owner: "On Goodwill's contract (their vendor)", sub: "A sub's items" };
+  NOT_MINE_LINE.undecided = "Colin is deciding whether that is punch or a change order; not today.";
   shell(`${HELPER_TABS("notmine")}<div class="h"><div><h1>Not mine</h1><div class="sub">Do not touch these. If a manager asks, say the line.</div></div></div>
-    ${stores.map((p) => { const g = notMineGroups(B, p.id); const n = Object.values(g).reduce((a, x) => a + x.length, 0); return `<div class="group">${esc(p.name)} (${n})</div><div class="card">${Object.entries(g).filter(([, v]) => v.length).map(([k, v]) => `<div class="sec"><h3>${label[k]}</h3><div class="sub" style="margin-bottom:6px">Say: "${NOT_MINE_LINE[k]}"</div>${v.map((it) => `<div style="padding:4px 0;font-size:14px"><b>#${it.number}</b> ${esc(it.title)}${it.responsible ? ` <span class="sub">(${esc(it.responsible)})</span>` : ""}</div>`).join("")}</div>`).join("") || `<div class="empty">Nothing here.</div>`}</div>`; }).join("")}
+    ${stores.map((p) => { const g = notMineGroups(B, p.id); const n = Object.values(g).reduce((a, x) => a + x.length, 0); return `<div class="group">${esc(p.name)} (${n})</div><div class="card">${Object.entries(g).filter(([, v]) => v.length).map(([k, v]) => `<div class="sec"><h3>${label[k]}</h3><div class="sub" style="margin-bottom:6px">Say: "${NOT_MINE_LINE[k]}"</div>${v.map((it) => `<div style="padding:4px 0;font-size:14px"><b>#${it.number}</b> ${esc(it.title)}${it.responsible ? ` <span class="sub">(${esc(it.responsible)})</span>` : ""}${it.card?.type_note ? ` <span class="chip type co" style="font-size:10px">${esc(it.card.type_note)}</span>` : ""}${it.card?.say_line ? `<div class="sub">Say: "${esc(it.card.say_line)}"</div>` : ""}</div>`).join("")}</div>`).join("") || `<div class="empty">Nothing here.</div>`}</div>`; }).join("")}
     ${peopleCard()}`);
 }
 async function renderHelperStores() {
@@ -1078,7 +1163,11 @@ async function renderHelperStores() {
 }
 function factRow(f, key, label) {
   const v = f?.facts?.[key]; const val = v && typeof v === "object" ? v.value : v;
-  return `<div class="sec" style="padding:10px 16px"><div style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">${label}</div><div style="font-size:15px;margin-top:2px">${val ? esc(val) : `<span style="color:var(--s-notacc)">Not on file, ask Colin</span>`}</div>${v && typeof v === "object" && v.source ? `<div class="sub" style="font-size:11px">${esc(v.source)}</div>` : ""}</div>`;
+  const known = val && !/^not on file/i.test(val);
+  return `<div class="sec" style="padding:10px 16px"><div style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">${label}${v && typeof v === "object" && v.partly_known ? ` <span class="chip type" style="font-size:10px">partly known</span>` : ""}</div><div style="font-size:15px;margin-top:2px;white-space:pre-line">${known ? esc(val) : `<span style="color:var(--s-notacc)">Not on file, ask Colin</span>`}</div>${known && v && typeof v === "object" && v.source ? `<div class="sub" style="font-size:11px">${esc(v.source)}</div>` : ""}${v && typeof v === "object" && v.related ? `<div class="sub" style="font-size:12px;margin-top:4px">Related, not the answer: ${esc(v.related)}</div>` : ""}</div>`;
+}
+function factLists(f) {
+  return FACT_LISTS.map(([k, label]) => { const arr = f?.facts?.[k]; if (!Array.isArray(arr) || !arr.length) return ""; return `<div class="sec" style="padding:10px 16px"><div style="font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)">${label}</div>${arr.map((x) => `<div style="font-size:14px;margin-top:6px"><b>${esc((x.topic || "").replace(/_/g, " "))}</b>: ${esc(x.value || "")}${x.source ? `<div class="sub" style="font-size:11px">${esc(x.source)}</div>` : ""}</div>`).join("")}</div>`; }).join("");
 }
 async function renderBrief(slug) {
   shell(loading(), { back: "My run" });
@@ -1092,7 +1181,9 @@ async function renderBrief(slug) {
       <div class="sec"><h3>Who to see first</h3><div style="font-size:15px">${p.manager_name ? `<b>${esc(p.manager_name)}</b>, store manager${p.manager_phone ? " &middot; " + esc(p.manager_phone) : " &middot; phone not on file, ask Colin"}` : `<span style="color:var(--s-notacc)">Store manager not on file, ask Colin</span>`}</div>
         <div class="sub" style="margin-top:6px">${f.told_who ? `Store was told I am coming: ${esc(f.told_who)} on ${fmtD(f.told_at)}${f.told_note ? " (" + esc(f.told_note) + ")" : ""}` : `<span style="color:var(--s-notacc)">Nobody has told the store yet. Do not show up cold; call Colin.</span>`}</div></div>
       ${FACT_KEYS.map(([k, l]) => factRow(f, k, l)).join("")}
+      ${factLists(f)}
     </div>
+    ${S.me.role === "admin" && !readOnly() && storeItems(B, p.id).some((i) => !i.mine && i.card?.could_take) ? `<div class="group">Helper could take this if the sub does not come</div><div class="card">${storeItems(B, p.id).filter((i) => !i.mine && i.card?.could_take).map((it) => `<a class="item" href="#/p/${slug}/i/${it.id}"><div class="num">${it.number}</div><div><div class="t">${esc(it.title)}</div><div class="m">${stChip(it.status)}<span>${esc(it.responsible || "unassigned")}</span></div></div></a>`).join("")}</div>` : ""}
     ${p.plan ? `<div class="card" style="margin-top:12px;padding:12px"><h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px">My items on the plan</h3><div style="position:relative"><img src="${p.plan.url}" style="width:100%;display:block;border-radius:8px">${pins.map((i) => `<span class="pin" style="left:${i.pin_x * 100}%;top:${i.pin_y * 100}%;width:26px;height:33px">${pinSvg(i.number, STATUS_HEX[i.status])}</span>`).join("")}</div>${mine.length - pins.length ? `<div class="sub" style="margin-top:6px">${mine.length - pins.length} item(s) have no pin; go by the room name.</div>` : ""}</div>` : ""}
     <div class="group">My items here (${mine.length})</div>
     <div class="card">${mine.map((it) => itemCardRow(it, slug)).join("") || `<div class="empty">Nothing for me at this store.</div>`}</div>
@@ -1107,7 +1198,7 @@ function itemCardRow(it, slug) {
 }
 function cardSection(it, b) {
   // Item card block on the item page (helper view, or admin editing).
-  const c = it.card || null; const inf = new Set((c?.inferred) || []);
+  const c = it.card || null; const inf = new Set(c?.inferred === true ? ["done_looks_like", "photo_proof", "minutes", "tools", "materials", "ladder_ft", "dependency", "safety"] : (c?.inferred) || []);
   const g = (k) => inf.has(k) ? ` <span class="chip type" style="font-size:10px">best guess</span>` : "";
   const row = (k, label, val) => `<div><small>${label}${g(k)}</small>${val ? esc(val) : `<span style="color:var(--s-notacc)">Not on file, ask Colin</span>`}</div>`;
   return `<div class="sec"><h3>The card ${S.me.role === "admin" && !readOnly() ? `<button class="lnk" onclick="editCard('${b.project.slug}','${it.id}')">Edit card</button>` : ""}</h3>
@@ -1116,6 +1207,10 @@ function cardSection(it, b) {
       ${row("minutes", "Minutes", c?.minutes ? c.minutes + " min" : "")}${row("ladder_ft", "Ladder", c?.ladder_ft ? c.ladder_ft + " ft" : "")}
       ${row("tools", "Tools", (c?.tools || []).map((t) => typeof t === "string" ? t : t.name).join(", "))}${row("materials", "Materials", (c?.materials || []).map((m) => `${m.qty || ""} ${m.unit || ""} ${m.name}${m.source ? " (" + m.source + ")" : ""}`.trim()).join("; "))}
       ${row("dependency", "Depends on", c?.dependency)}${row("safety", "Safety", c?.safety)}${row("ppe", "PPE", c?.ppe)}
+      ${c?.type_note ? `<div class="full"><small>Type</small><span class="chip type co">${esc(c.type_note)}</span></div>` : ""}
+      ${c?.say_line ? `<div class="full"><small>If a manager asks</small>"${esc(c.say_line)}"</div>` : ""}
+      ${c?.not_mine_reason && !it.mine ? `<div class="full"><small>Why it is not mine</small>${esc(c.not_mine_reason)}</div>` : ""}
+      ${S.me.role === "admin" && c ? `<div class="full"><small>Capability (not an assignment)</small>${c.helper_can_do ? "Helper can do this" : "Not a helper item"}${c.could_take ? " &middot; could take it if the sub does not come" : ""}${c.colin_note ? `<div class="sub">${esc(c.colin_note)}</div>` : ""}</div>` : ""}
       ${c?.source ? `<div class="full"><small>Source</small>${esc(c.source)}</div>` : ""}
     </div></div>`;
 }
@@ -1321,7 +1416,7 @@ async function renderSignoff(slug) {
     <div class="tabs"><a href="#/p/${slug}">List</a><a href="#/p/${slug}/plan">Plan</a>${S.me.role === "admin" || S.me.role === "helper" ? `<a href="#/p/${slug}/walk">Walk</a>` : ""}<a class="on" href="#/p/${slug}/signoff">Sign-off</a></div>
     <div class="h"><div><h1>${esc(b.project.name)} sign-off</h1><div class="sub">${open.length ? `${open.length} of ${items.length} items still open` : `All ${items.length} items closed`}</div></div>
       <div class="btnrow"><a class="btn sm" href="#/p/${slug}/print">Sign-off form</a>${me.role !== "owner" ? `<button class="btn sm ink" onclick="packagePdf('${slug}')">Punch package PDF</button><button class="btn sm" onclick="jobplannerExport('${slug}')">JobPlanner export</button>` : ""}</div></div>
-    ${b.log.length ? `<div class="sub" style="margin:-6px 0 12px">${b.log.map((l) => `${l.action === "lock" ? "&#128274; Frozen" : "&#128275; Unlocked"} by ${esc(l.parties?.name || "")} ${fmtDT(l.created_at)}${l.note ? ": " + esc(l.note) : ""}`).join("<br>")}</div>` : ""}
+    ${b.log.some((l) => l.action === "lock" || l.action === "unlock") ? `<div class="sub" style="margin:-6px 0 12px">${b.log.filter((l) => l.action === "lock" || l.action === "unlock").map((l) => `${l.action === "lock" ? "&#128274; Frozen" : "&#128275; Unlocked"} by ${esc(l.parties?.name || "")} ${fmtDT(l.created_at)}${l.note ? ": " + esc(l.note) : ""}`).join("<br>")}</div>` : ""}
     <div class="stack">
       <div class="card" style="padding:16px"><h2 style="font-size:17px">Substantial completion</h2><div class="sub" style="margin:4px 0 10px">The work is substantially complete and the owner can occupy and use it. Open items get finished by their due dates.</div>
         ${sigLines(sub)}
@@ -1332,7 +1427,10 @@ async function renderSignoff(slug) {
         ${me.role === "admin" ? `<div class="sub" style="margin-top:6px">Final acceptance is the owner's. Alleato signs only its own line. Drawn signature for the owner: ${b.project.esign_enabled ? "ON" : "OFF"} (Store details).</div>` : ""}</div>
       ${me.role === "admin" ? `<div class="card" style="padding:16px"><h2 style="font-size:17px">Filed in JobPlanner</h2><div class="sub" style="margin:4px 0 10px">The JobPlanner record is the package PDF and the CSV, filed in the store's JobPlanner project by an Alleato person. Record it here; it prints on the form.</div>
         ${(b.filings || []).map((f) => `<div class="chip type" style="margin:0 6px 6px 0">&#10003; ${esc(f.parties?.name || "")} &middot; ${fmtD(f.filed_at)} &middot; ${esc(f.what)}</div>`).join("")}
-        <div><button class="btn" onclick="jpFiled('${slug}')">Record a filing</button></div></div>` : ""}
+        <div><button class="btn" onclick="jpFiled('${slug}')">Record a filing</button></div></div>
+      <div class="card" style="padding:16px"><h2 style="font-size:17px">Final Punch Record</h2><div class="sub" style="margin:4px 0 10px">What Goodwill receives: summary, item register, one page per item with before, after and verification photos and the full history, removed items, the list agreement log and the sign-off as recorded; plus the data files (items, history, every photo with an index). Alleato notes stay out. Built here the moment final acceptance is signed; the laptop tool is the backup path.</div>
+        ${fin.some((s) => s.line === "owner") ? `<div class="btnrow"><button class="btn ok" onclick="finalRecord('${slug}','pdf')">Record PDF</button><button class="btn" onclick="finalRecord('${slug}','zip')">Data files + photos (zip)</button></div>${!fin.some((s) => s.line === "alleato") ? `<div class="sub" style="margin-top:6px">Alleato's final line is not signed yet; the record says so.</div>` : ""}` : `<div class="btnrow"><button class="btn" disabled>Record PDF</button><button class="btn" disabled>Data files + photos (zip)</button></div><div class="sub" style="margin-top:6px">Available once the owner signs final acceptance.</div>`}
+        ${b.log.filter((l) => l.action === "final record").map((l) => `<div class="chip type" style="margin:8px 6px 0 0">&#10003; Generated by ${esc(l.parties?.name || "")} ${fmtDT(l.created_at)}</div>`).join("")}</div>` : ""}
       <div class="card"><div class="sec"><h3>Line items</h3>
         <div class="tw"><table style="width:100%;border-collapse:collapse;font-size:13px">
           <tr style="color:var(--muted);text-align:left"><th style="padding:4px">#</th><th>Type</th><th>Item</th><th>Status</th></tr>
@@ -1483,6 +1581,126 @@ async function packagePdf(slug) {
   const un = items.filter((i) => !i.assignee_id); if (un.length) { doc.addPage(); table(un, `Unassigned: ${un.length}`); }
   doc.save(`${p.name} punch package ${new Date().toISOString().slice(0, 10)}.pdf`);
   toast("Package saved");
+}
+// ---------- Final Punch Record (procedure section 7): built on the phone or laptop from one record bundle ----------
+function csvOf(rows, cols) { return [cols.join(",")].concat(rows.map((r) => cols.map((c) => `"${String(r[c] ?? "").replace(/"/g, '""')}"`).join(","))).join("\n"); }
+function recordFacts(R, it) {
+  const ev = R.events.filter((e) => e.item_id === it.id); const who = (e) => e.parties ? e.parties.name + (e.parties.company ? ", " + e.parties.company : "") : "";
+  const last = (f) => ev.filter(f).pop(); const when = (e) => e ? fmtDT(e.created_at) + (who(e) ? ", " + who(e) : "") : "not recorded";
+  const made = ev.find((e) => e.action === "created"), told = last((e) => e.action === "notified"), asg = last((e) => e.action === "assigned");
+  const done = last((e) => e.action === "status" && e.to_status === "Ready for Review"), ver = last((e) => e.action === "status" && e.to_status === "Ready to Close"), acc = last((e) => e.action === "status" && e.to_status === "Closed");
+  const resp = it.by_owner ? "Goodwill's vendor (by owner)" : (R.parties.find((p) => p.id === it.assignee_id) ? (() => { const p = R.parties.find((q) => q.id === it.assignee_id); return p.company && p.role === "sub" ? p.company + " (" + p.name + ")" : p.name; })() : "unassigned");
+  const outcome = it.status === "Closed" ? "Accepted by the owner" : it.status === "Removed" ? "Removed from the list" : "Open: " + it.status;
+  return { logged: when(made), assigned: asg ? when(asg) : (it.assignee_id ? when(made) : "not recorded"), told: told ? when(told) + (it.last_notified_how ? " (" + it.last_notified_how + ")" : "") : "not recorded", completed: when(done),
+    verified: it.verified_at ? `${fmtDT(it.verified_at)}, ${it.verified_how}, ${partyName({ parties: R.parties }, it.verified_by) || "Alleato"}` : (ver ? when(ver) + ", how not recorded" : "not recorded"), accepted: when(acc), responsible: resp, outcome, room: it.area || "" };
+}
+async function finalRecord(slug, what) {
+  const b = S.boards[slug] || await loadBoard(slug, true);
+  if (what === "pdf" && !window.jspdf) return toast("PDF library still loading, try again", true);
+  if (what === "zip" && !window.JSZip) return toast("Zip library still loading, try again", true);
+  toast("Gathering the record");
+  let R; try { R = await api("record_bundle", { project_id: b.project.id, generated: what === "pdf" }); } catch (e) { return toast(e.message, true); }
+  const P = R.project; const live = R.items.filter((i) => i.status !== "Removed"), removed = R.items.filter((i) => i.status === "Removed");
+  const F = {}; for (const it of R.items) F[it.id] = recordFacts(R, it);
+  const stamp = new Date(R.generated_at).toLocaleString("en-US");
+  if (what === "zip") {
+    const zip = new JSZip();
+    zip.file("items.csv", csvOf(R.items.map((i) => ({ type: i.type, number: i.number, room: F[i.id].room, title: i.title, detail: i.detail || "", responsible: F[i.id].responsible, by_owner: i.by_owner ? "yes" : "", status: i.status, outcome: F[i.id].outcome, logged: F[i.id].logged, assigned: F[i.id].assigned, told: F[i.id].told, completed: F[i.id].completed, verified: F[i.id].verified, verify_method: i.verify_method || "", accepted: F[i.id].accepted, due_date: i.due_date || "", tags: (i.tags || []).join("; ") })), ["type", "number", "room", "title", "detail", "responsible", "by_owner", "status", "outcome", "logged", "assigned", "told", "completed", "verified", "verify_method", "accepted", "due_date", "tags"]));
+    zip.file("history.csv", csvOf(R.events.map((e) => { const it = R.items.find((i) => i.id === e.item_id) || {}; return { type: it.type, number: it.number, when: e.created_at, who: e.parties ? e.parties.name : "", company: e.parties?.company || "", role: e.parties?.role || "", action: e.action, from: e.from_status || "", to: e.to_status || "", note: e.note && e.note.startsWith("{") ? diffText(e.note) : (e.note || "") }; }), ["type", "number", "when", "who", "company", "role", "action", "from", "to", "note"]));
+    zip.file("list-agreement-log.csv", csvOf(R.log.map((l) => ({ when: l.created_at, who: l.parties?.name || "", action: l.action, note: l.note || "" })), ["when", "who", "action", "note"]));
+    const index = []; let n = 0;
+    const put = async (name, url, row) => { try { const r = await fetch(url); if (!r.ok) throw new Error(r.status); zip.file("photos/" + name, await r.blob()); index.push({ file: "photos/" + name, ...row }); n++; toast(`Photo ${n}`); } catch { index.push({ file: "(not retrieved)", ...row }); } };
+    for (const it of R.items) { let k = 0; for (const ph of R.photos.filter((x) => x.item_id === it.id)) { k++; await put(`item-${String(it.number).padStart(3, "0")}-${ph.kind}-${k}.jpg`, ph.url, { type: it.type, number: it.number, kind: ph.kind, taken: ph.created_at, by: partyName({ parties: R.parties }, ph.uploaded_by), caption: ph.caption || "", removed: ph.removed_at ? `removed ${ph.removed_at}: ${ph.removed_reason || ""}` : "" }); } }
+    let w = 0; for (const sh of R.shots) { w++; await put(`walk-${String(w).padStart(3, "0")}${sh.original_url ? "-original" : ""}.jpg`, sh.original_url || sh.url, { type: "walk shot", number: "", kind: "walk", taken: sh.shot_at, by: sh.parties?.name || "", caption: [sh.room, sh.note, sh.transcript].filter(Boolean).join(" | "), removed: sh.lat != null ? `GPS ${sh.lat},${sh.lng}` : "" }); }
+    for (const sg of R.signoffs.filter((x) => x.signature_url)) await put(`signature-${sg.kind}-${sg.line}.png`, sg.signature_url, { type: "signature", number: "", kind: sg.kind + " " + sg.line, taken: sg.signed_at, by: sg.signer_name, caption: "", removed: "" });
+    zip.file("photos/index.csv", csvOf(index, ["file", "type", "number", "kind", "taken", "by", "caption", "removed"]));
+    zip.file("README.txt", `Final Punch Record data files, ${P.name}, job ${P.job_no || ""}. Generated by Punchline ${stamp}${R.final_signed ? "" : " (DRAFT: final acceptance not signed on both lines)"}.\nitems.csv = the item register. history.csv = every history line of every item. list-agreement-log.csv = freezes, unlocks, filings, records. photos/ = every photo with index.csv.`);
+    const blob = await zip.generateAsync({ type: "blob" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `${P.name} Final Punch Record data ${R.generated_at.slice(0, 10)}.zip`; a.click();
+    return toast("Data files saved");
+  }
+  // PDF: letter landscape
+  const { jsPDF } = window.jspdf; const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "letter" });
+  const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 36; let y = M;
+  const draft = !R.final_signed;
+  const header = (title) => { doc.setFont("helvetica", "bold"); doc.setFontSize(14); doc.setTextColor(0); doc.text(`FINAL PUNCH RECORD  |  ${P.name}  |  Job ${P.job_no || ""}`, M, M); doc.setFont("helvetica", "normal"); doc.setFontSize(9); doc.setTextColor(90); doc.text(`${title}   ${P.address || ""}   Generated ${stamp}`, M, M + 14); if (draft) { doc.setTextColor(190, 30, 30); doc.text("DRAFT: final acceptance not signed on both lines", W - M, M, { align: "right" }); } doc.setTextColor(0); doc.setDrawColor(0); doc.line(M, M + 20, W - M, M + 20); y = M + 34; };
+  const footer = () => { doc.setFontSize(8); doc.setTextColor(90); doc.text(`Punchline  |  Alleato Group  |  Page ${doc.internal.getNumberOfPages()}`, W - M, H - 14, { align: "right" }); doc.setTextColor(0); };
+  const newPage = (title) => { footer(); doc.addPage(); header(title); };
+  const line = (txt, size = 10, bold = false, indent = 0) => { doc.setFont("helvetica", bold ? "bold" : "normal"); doc.setFontSize(size); const ls = doc.splitTextToSize(String(txt), W - 2 * M - indent); for (const l of ls) { if (y > H - 40) newPage("(continued)"); doc.text(l, M + indent, y); y += size + 3; } };
+  const sec = (t) => { y += 6; line(t.toUpperCase(), 10, true); y += 2; };
+  const lockEv = R.log.filter((l) => l.action === "lock"), so = (k, l) => R.signoffs.find((x) => x.kind === k && x.line === l);
+  const closedDates = live.filter((i) => i.closed_at).map((i) => i.closed_at).sort();
+  // 1. summary
+  header("Summary");
+  doc.setFont("helvetica", "bold"); doc.setFontSize(22); doc.text(P.name, M, y + 14); y += 34;
+  sec("Dates");
+  const sig = (k) => { const o = so(k, "owner"), a = so(k, "alleato"); return [o ? `Owner's representative: ${o.signer_name}, ${fmtD(o.signed_at)}` : "owner line not signed", a ? `Alleato: ${a.signer_name}, ${fmtD(a.signed_at)}` : "Alleato line not signed"].join("; "); };
+  for (const [k, v] of [["Punch walk", P.walk_date ? fmtD(P.walk_date) + (P.walk_attendees ? " with " + P.walk_attendees : "") : "not recorded"], ["List agreed (frozen)", lockEv.length ? lockEv.map((l) => `${fmtDT(l.created_at)} by ${l.parties?.name || ""}`).join("; ") : "not frozen"], ["Last item closed", closedDates.length ? fmtD(closedDates[closedDates.length - 1]) : "none closed"], ["Substantial completion", sig("substantial")], ["Final acceptance", sig("final")], ["Filed in JobPlanner", R.filings.length ? R.filings.map((f) => `${fmtD(f.filed_at)} ${f.what} by ${f.parties?.name || ""}`).join("; ") : "not recorded"]]) line(`${k}: ${v}`);
+  sec("Counts");
+  for (const t of TYPES) { const its = R.items.filter((i) => i.type === t); if (its.length) line(`${t}: ${its.length} (${its.filter((i) => i.status === "Closed").length} accepted, ${its.filter((i) => i.status === "Removed").length} removed, ${its.filter((i) => !["Closed", "Removed"].includes(i.status)).length} open)`); }
+  line(`Verification: ${live.filter((i) => i.verified_how === "on site").length} on site, ${live.filter((i) => i.verified_how === "photo").length} from the photo, ${live.filter((i) => !i.verified_at).length} not verified`);
+  line(`Photos on record: ${R.photos.filter((p) => !p.removed_at).length} (${R.photos.filter((p) => p.removed_at).length} removed with reason, kept on file); walk shots: ${R.shots.length}`);
+  sec("People");
+  const roleName = { admin: "Alleato", owner: "Owner's representative", sub: "Subcontractor", helper: "Alleato field helper" };
+  const seen = new Set([...R.events.map((e) => e.actor_id), ...R.items.map((i) => i.assignee_id), ...R.signoffs.map((x) => x.signer_id), ...R.log.map((l) => l.actor_id)].filter(Boolean));
+  for (const p of R.parties.filter((x) => seen.has(x.id))) line(`${p.name}${p.company ? ", " + p.company : ""}: ${roleName[p.role] || p.role}${p.active ? "" : " (link since switched off)"}`);
+  // 2. item register
+  newPage("Item register");
+  const cols = [["#", 24], ["Type", 54], ["Room", 80], ["Item", 190], ["Responsible", 100], ["Logged", 62], ["Told", 62], ["Completed", 62], ["Verified", 100], ["Accepted", 62], ["Outcome", W - 2 * M - 24 - 54 - 80 - 190 - 100 - 62 - 62 - 62 - 100 - 62]];
+  const head = () => { doc.setFont("helvetica", "bold"); doc.setFontSize(7.5); doc.setFillColor(230); doc.rect(M, y - 8, W - 2 * M, 12, "F"); let x = M; for (const [n, w] of cols) { doc.text(n, x + 2, y); x += w; } y += 8; doc.setFont("helvetica", "normal"); };
+  head();
+  const short = (s) => (s || "").replace(/, \d{1,2}:\d{2} [AP]M/, "");
+  for (const it of R.items) {
+    const f = F[it.id]; const cells = [String(it.number), it.type.toUpperCase(), f.room, it.title + (it.by_owner ? " [BY OWNER]" : ""), f.responsible, short(f.logged), short(f.told), short(f.completed), short(f.verified), short(f.accepted), f.outcome];
+    const ls = cells.map((c, i) => doc.splitTextToSize(c, cols[i][1] - 4)); const h = Math.max(...ls.map((l) => l.length)) * 8 + 4;
+    if (y + h > H - 36) { newPage("Item register (continued)"); head(); }
+    doc.setDrawColor(200); doc.line(M, y - 6, W - M, y - 6); let x = M;
+    ls.forEach((l, i) => { if (i === 1) doc.setFont("helvetica", "bold"); doc.text(l, x + 2, y); if (i === 1) doc.setFont("helvetica", "normal"); x += cols[i][1]; }); y += h;
+  }
+  // 3. one page per item
+  const imgs = {}; const img = async (url) => { if (!url) return null; if (!(url in imgs)) { try { imgs[url] = await loadImg(url); } catch { imgs[url] = null; } } return imgs[url]; };
+  for (const it of R.items) {
+    newPage(`Item #${it.number}`); const f = F[it.id];
+    doc.setFont("helvetica", "bold"); doc.setFontSize(13); doc.text(`#${it.number}  ${it.type.toUpperCase()}  ${it.title}`, M, y, { maxWidth: W - 2 * M }); y += 18 + (it.title.length > 90 ? 14 : 0);
+    line(`Room: ${f.room || "not recorded"}   Responsible: ${f.responsible}   Outcome: ${f.outcome}${it.tags && it.tags.length ? "   Tags: " + it.tags.join(", ") : ""}`, 9);
+    if (it.detail) line(`Detail: ${it.detail}`, 9);
+    line(`Logged ${f.logged}  |  Told ${f.told}  |  Completed ${f.completed}  |  Verified ${f.verified}  |  Accepted ${f.accepted}`, 8);
+    const ph = R.photos.filter((p) => p.item_id === it.id && !p.removed_at); const pick = (k) => ph.filter((p) => p.kind === k);
+    const slots = [["Before", pick("before")[0]], ["After", pick("after").slice(-1)[0]], ["Verification", pick("verify").slice(-1)[0]]];
+    const plan = R.plans.find((p) => p.id === it.plan_id); const slotW = (W - 2 * M - 3 * 10) / 4, slotH = 170; let x = M; y += 4;
+    for (const [lab, p] of slots) {
+      doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.text(lab, x, y);
+      const im = p ? await img(p.url) : null;
+      if (im) { const sc = Math.min(slotW / im.width, (slotH - 24) / im.height); try { doc.addImage(im, "JPEG", x, y + 4, im.width * sc, im.height * sc); } catch {} doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.text(`${fmtDT(p.created_at)} by ${partyName({ parties: R.parties }, p.uploaded_by) || ""}${f.room ? ", " + f.room : ""}`, x, y + slotH - 8, { maxWidth: slotW }); }
+      else { doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.text(p ? "(photo did not load)" : "no photo on record", x, y + 16); }
+      x += slotW + 10;
+    }
+    doc.setFont("helvetica", "bold"); doc.setFontSize(8); doc.text("On the plan", x, y);
+    const pim = plan && it.pin_x != null ? await img(plan.url) : null;
+    if (pim) { const sc = Math.min(slotW / pim.width, (slotH - 24) / pim.height); const dw = pim.width * sc, dh = pim.height * sc; try { doc.addImage(pim, "PNG", x, y + 4, dw, dh); } catch {} doc.setFillColor(219, 128, 45); doc.setDrawColor(255); doc.circle(x + it.pin_x * dw, y + 4 + it.pin_y * dh, 5, "FD"); }
+    else { doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.text("no pin on record", x, y + 16); }
+    y += slotH + 6;
+    sec("History");
+    for (const e of R.events.filter((e) => e.item_id === it.id)) {
+      let what = e.action; if (e.action === "status") what = `${e.from_status || "new"} -> ${e.to_status}`; else if (e.action === "created") what = `created as ${e.to_status}`; else if (e.action === "notified") what = "told"; else if (e.action === "verify method") what = "verification method changed";
+      const note = e.note ? (e.note.includes("{") ? diffText(e.note).replace(/notes: "[^"]*" → "[^"]*";? ?/g, "") : e.note) : "";
+      line(`${fmtDT(e.created_at)}  ${e.parties ? e.parties.name + (e.parties.company ? ", " + e.parties.company : "") : ""}: ${what}${note ? " - " + note : ""}`, 8, false, 6);
+    }
+    const more = ph.length - slots.filter(([, p]) => p).length; if (more > 0) line(`${more} more photo${more === 1 ? "" : "s"} on record (in the data files).`, 8, false, 6);
+    const rem = R.photos.filter((p) => p.item_id === it.id && p.removed_at); for (const p of rem) line(`Photo removed ${fmtDT(p.removed_at)}: ${p.removed_reason || ""} (kept on file)`, 8, false, 6);
+  }
+  // 4. removed items, 5. list agreement log, 6. sign-off as recorded
+  newPage("Removed items");
+  if (!removed.length) line("No items were removed from the list.");
+  for (const it of removed) { const e = R.events.filter((x) => x.item_id === it.id && x.action === "status" && x.to_status === "Removed").pop(); line(`#${it.number} ${it.type.toUpperCase()} ${it.title}`, 10, true); line(e ? `Removed ${fmtDT(e.created_at)} by ${e.parties?.name || ""}: ${e.note || "no reason recorded"}` : "removal not in history", 9, false, 8); y += 4; }
+  newPage("List agreement log");
+  if (!R.log.length) line("No freeze, unlock or filing recorded.");
+  for (const l of R.log) line(`${fmtDT(l.created_at)}  ${l.parties?.name || ""}: ${l.action}${l.note ? " - " + l.note : ""}`, 9);
+  newPage("Sign-off as recorded");
+  for (const k of ["substantial", "final"]) { sec(k === "final" ? "Final acceptance" : "Substantial completion"); for (const ln of ["owner", "alleato"]) { const x = so(k, ln); line(`${ln === "owner" ? "Owner's representative" : "Alleato Group"}: ${x ? `${x.signature_url ? "signed" : "typed"} in Punchline by ${x.signer_name} on ${fmtDT(x.signed_at)}${x.note ? " (" + x.note + ")" : ""}` : "not signed"}`); if (x && x.signature_url) { const im = await img(x.signature_url); if (im) { const sc = Math.min(200 / im.width, 60 / im.height); try { doc.addImage(im, "PNG", M + 10, y, im.width * sc, im.height * sc); } catch {} y += im.height * sc + 6; } } } }
+  line("Wet-ink copy: the printed Final Punch List and Sign-Off form, if ownership required one, is filed with this record.", 8);
+  footer();
+  doc.save(`${P.name} Final Punch Record ${R.generated_at.slice(0, 10)}${draft ? " DRAFT" : ""}.pdf`);
+  toast(draft ? "Draft record saved" : "Final Punch Record saved");
 }
 function exportCsv(slug) {
   const b = S.boards[slug];
