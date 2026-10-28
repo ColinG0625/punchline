@@ -255,7 +255,7 @@ textarea.ta{min-height:76px;resize:vertical}
 <script>
 // ---------- config ----------
 const API = "https://wwwtpeeywpdiazhwzwlr.supabase.co/functions/v1/api";
-const BUILD = "20261028-091601"; // stamped by tools/publish.py
+const BUILD = "20261028-093518"; // stamped by tools/publish.py
 const STATUSES = ["Draft","Open","Work Required","In Dispute","Blocked","Ready for Review","Not Accepted","Ready to Close","Closed","Removed"];
 const JP_STATUS = {"Draft":0,"Open":0,"Work Required":0,"In Dispute":0,"Blocked":0,"Not Accepted":0,"Ready for Review":1,"Ready to Close":1,"Closed":2,"Removed":2};
 const JP_PROJECT = {};
@@ -345,6 +345,13 @@ function runStores(B) {
   const released = B.stores.filter((p) => p.released !== false);
   if (B.run && B.run.run_stops.length) return B.run.run_stops.map((st) => ({ ...released.find((p) => p.id === st.project_id) || B.stores.find((p) => p.id === st.project_id), stop: st })).filter((p) => p && p.id);
   return released.filter((p) => storeItems(B, p.id).some((i) => i.mine)).map((p) => ({ ...p, stop: null }));
+}
+// The helper's items at a store: with a run planned, the items on his run (mine); with no run, every item whose card says the
+// helper can do it ("if all helper items at this store are worked"), so the Bring list and the per-store run sheet are never empty.
+const noRun = (B) => !(B.run && B.run.run_stops.length);
+function helperItemsFor(B, p) {
+  if (!noRun(B)) return storeItems(B, p.id).filter((i) => i.mine);
+  return storeItems(B, p.id).filter((i) => i.mine || (i.card?.helper_can_do && !i.by_owner && !i.card?.type_note && !["Closed", "Removed", "Ready to Close", "Ready for Review"].includes(i.status)));
 }
 const MARK = `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="M32 8c-9.9 0-18 7.8-18 17.5C14 38.2 32 56 32 56s18-17.8 18-30.5C50 15.8 41.9 8 32 8z" fill="#fff"/><circle cx="32" cy="25.5" r="6.5" fill="#E4572E"/></svg>`;
 
@@ -1120,7 +1127,7 @@ async function renderRun() {
 }
 function materialsFor(B, stores) {
   const mats = {}, tools = new Set(); let ladder = 0; const ppe = new Set(); const lead = [];
-  for (const p of stores) for (const it of storeItems(B, p.id).filter((i) => i.mine)) {
+  for (const p of stores) for (const it of helperItemsFor(B, p)) {
     const c = it.card; if (!c) continue;
     for (const t of c.tools || []) tools.add(typeof t === "string" ? t : t.name);
     for (const m of c.materials || []) { const k = (m.name || "").toLowerCase(); const e = (mats[k] ||= { name: m.name, qty: 0, unit: m.unit || "", sources: new Set(), items: [] }); e.qty += Number(m.qty) || 0; if (m.source) e.sources.add(m.source); e.items.push(`${p.name} #${it.number}`); if (m.lead_time) lead.push(`${m.name}: ${m.lead_time}`); }
@@ -1131,10 +1138,10 @@ function materialsFor(B, stores) {
 }
 async function renderBring() {
   shell(loading());
-  const B = await loadBrief(); const stores = runStores(B); const m = materialsFor(B, stores);
+  const B = await loadBrief(); const stores = noRun(B) ? B.stores.filter((p) => p.released !== false && helperItemsFor(B, p).length).map((p) => ({ ...p, stop: null })) : runStores(B); const m = materialsFor(B, stores);
   document.title = "What to bring · Punchline";
-  const noCards = stores.flatMap((p) => storeItems(B, p.id).filter((i) => i.mine && !i.card));
-  shell(`${HELPER_TABS("bring")}<div class="h"><div><h1>What to bring</h1><div class="sub">For ${fmtD(B.date)}: ${stores.map((p) => esc(p.name)).join(", ") || "no stores"}</div></div></div>
+  const noCards = stores.flatMap((p) => helperItemsFor(B, p).filter((i) => !i.card));
+  shell(`${HELPER_TABS("bring")}<div class="h"><div><h1>What to bring</h1><div class="sub">${noRun(B) ? `No run planned for ${fmtD(B.date)}: if all helper items at ${stores.map((p) => esc(p.name)).join(", ") || "these stores"} are worked` : `For ${fmtD(B.date)}: ${stores.map((p) => esc(p.name)).join(", ") || "no stores"}`}</div></div></div>
     <div class="card"><div class="sec"><h3>Materials</h3>${m.mats.length ? `<table style="width:100%;border-collapse:collapse;font-size:14px">${m.mats.map((x) => `<tr style="border-top:1px solid var(--line)"><td style="padding:6px 0"><b>${esc(x.name)}</b><div class="sub" style="font-size:12px">${x.items.join(", ")}</div></td><td style="text-align:right;white-space:nowrap">${x.qty || ""} ${esc(x.unit)}</td><td style="text-align:right;font-size:12px;color:var(--muted)">${[...x.sources].map(esc).join("; ") || "source not on file"}</td></tr>`).join("")}</table>` : `<div class="empty">No materials listed yet${noCards.length ? " (cards not filled for " + noCards.length + " items)" : ""}.</div>`}</div>
       <div class="sec"><h3>Tools</h3>${m.tools.length ? `<div class="notes">${m.tools.map(esc).join(", ")}</div>` : `<div class="empty">No tools listed yet.</div>`}</div>
       <div class="sec"><h3>Ladder</h3><div class="notes">${m.ladder ? m.ladder + " ft" : "Not on file, ask Colin"}</div></div>
@@ -1159,7 +1166,7 @@ async function renderNotMine() {
 }
 async function renderHelperStores() {
   shell(loading()); const B = await loadBrief(); document.title = "Stores · Punchline";
-  shell(`${HELPER_TABS("stores")}<div class="h"><div><h1>Stores</h1></div></div><div class="card">${B.stores.map((p) => { const mine = storeItems(B, p.id).filter((i) => i.mine).length; return `<a class="item" href="#/p/${p.slug}/brief"><div class="num" style="font-size:12px">${mine}</div><div><div class="t">${esc(p.name)}</div><div class="m"><span>${esc(p.address || "")}</span>${p.released === false ? `<span style="color:var(--s-notacc);font-weight:700">not released</span>` : ""}</div></div></a>`; }).join("")}</div>${peopleCard()}`);
+  shell(`${HELPER_TABS("stores")}<div class="h"><div><h1>Stores</h1></div></div><div class="card">${B.stores.map((p) => { const mine = storeItems(B, p.id).filter((i) => i.mine).length; return `<a class="item" href="#/p/${p.slug}/brief" style="${p.released === false ? "opacity:.55" : ""}"><div class="num" style="font-size:12px">${mine}</div><div><div class="t">${esc(p.name)}</div><div class="m"><span>${esc(p.address || "")}</span>${p.released === false ? `<span style="color:var(--s-notacc);font-weight:700">not released</span>` : ""}</div></div></a>`; }).join("")}</div>${peopleCard()}`);
 }
 function factRow(f, key, label) {
   const v = f?.facts?.[key]; const val = v && typeof v === "object" ? v.value : v;
@@ -1283,15 +1290,15 @@ async function renderRunSheet(slug) {
     <div class="screen-doc"><div class="doc">
       <div class="tl"><div><h1>RUN SHEET ${esc(fmtD(B.date))}</h1><div>${stores.map((p) => esc(p.name)).join(" &rarr; ")}</div></div><div style="text-align:right;font-size:11px">Punchline<br>${esc(B.me.name)}</div></div>
       <h2>Who to call</h2><table>${PEOPLE.map((p) => `<tr><td><b>${esc(p.name)}</b> ${esc(p.phone)}</td><td>${esc(p.role)}. ${esc(p.when)}</td></tr>`).join("")}<tr><td><b>Andrew Mulder</b></td><td>Goodwill facilities PM. Do not contact; Colin or Doug does.</td></tr></table>
-      <h2>Bring</h2><table>${m.mats.map((x) => `<tr><td>${esc(x.name)}</td><td>${x.qty || ""} ${esc(x.unit)}</td><td>${[...x.sources].map(esc).join("; ")}</td></tr>`).join("") || "<tr><td>No materials listed yet</td></tr>"}</table>
+      <h2>Bring${noRun(B) ? " (if all helper items at the store are worked)" : ""}</h2><table>${m.mats.map((x) => `<tr><td>${esc(x.name)}</td><td>${x.qty || ""} ${esc(x.unit)}</td><td>${[...x.sources].map(esc).join("; ")}</td></tr>`).join("") || "<tr><td>No materials listed yet</td></tr>"}</table>
       <p>Tools: ${m.tools.map(esc).join(", ") || "not listed"}. Ladder: ${m.ladder ? m.ladder + " ft" : "not on file"}. PPE: ${m.ppe.map(esc).join("; ") || "boots, glasses, gloves"}.</p>
-      ${stores.map((p) => { const f = p.facts || { facts: {} }; const mine = storeItems(B, p.id).filter((i) => i.mine); const nm = notMineGroups(B, p.id); const pins = mine.filter((i) => i.plan_id && i.pin_x != null); return `
+      ${stores.map((p) => { const f = p.facts || { facts: {} }; const mine = helperItemsFor(B, p); const nm = notMineGroups(B, p.id); for (const k in nm) nm[k] = nm[k].filter((i) => !mine.includes(i)); const pins = mine.filter((i) => i.plan_id && i.pin_x != null); return `
         <div class="pg"></div><h2>${esc(p.name)}${p.stop?.start_time ? " &middot; " + esc(p.stop.start_time) : ""}${p.released === false ? " &middot; NOT RELEASED" : ""}</h2>
         <div class="info"><div><small>Address</small>${esc(p.address || "not on file")}<br><small>${esc(mapLink(p.address))}</small></div><div><small>Store manager</small>${esc(p.manager_name || "not on file")} ${esc(p.manager_phone || "")}</div>
           <div><small>Store told I am coming</small>${f.told_who ? esc(f.told_who) + " " + fmtD(f.told_at) : "NO. Call Colin before going."}</div><div><small>Drive</small>${p.stop?.drive_minutes != null ? p.stop.drive_minutes + " min" : ""}</div></div>
         <table>${FACT_KEYS.map(([k, l]) => factLine(f, k, l)).join("")}</table>
         ${p.plan ? `<div style="position:relative;margin-top:8pt;page-break-inside:avoid"><img src="${p.plan.url}" style="width:100%;display:block">${pins.map((i) => `<span style="position:absolute;left:${i.pin_x * 100}%;top:${i.pin_y * 100}%;transform:translate(-50%,-100%);width:22px;height:28px">${pinSvg(i.number, STATUS_HEX[i.status])}</span>`).join("")}</div>` : ""}
-        <h2>My items (${mine.length})</h2>
+        <h2>My items (${mine.length})${noRun(B) ? " &middot; no run planned: every item the helper can do here" : ""}</h2>
         ${mine.map((it) => { const c = it.card || {}; return `<div class="box" style="page-break-inside:avoid;display:grid;grid-template-columns:1fr 160px;gap:10px"><div><b>#${it.number} ${esc(it.title)}</b> &middot; ${esc(roomOf(it, { plans: p.plan ? [p.plan] : [] }) || it.area || "")} &middot; ~${minutesOf(it)} min<br>
           <b>Done =</b> ${esc(c.done_looks_like || "not on file")}<br><b>Photo:</b> ${esc(c.photo_proof || "after photo of the finished work")}<br><b>Tools:</b> ${esc((c.tools || []).map((t) => typeof t === "string" ? t : t.name).join(", ") || "not listed")}<br><b>Materials:</b> ${esc((c.materials || []).map((x) => `${x.qty || ""} ${x.unit || ""} ${x.name}`.trim()).join("; ") || "not listed")}<br>
           ${c.dependency ? `<b>Depends on:</b> ${esc(c.dependency)}<br>` : ""}${c.safety ? `<b>Safety:</b> ${esc(c.safety)}<br>` : ""}${it.detail ? `<b>Note:</b> ${esc(it.detail)}` : ""}</div>
